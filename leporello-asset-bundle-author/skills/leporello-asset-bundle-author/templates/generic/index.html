@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Leporello bundle — generic</title>
+		<link rel="stylesheet" href="./lib/tokens.css" />
+		<link rel="stylesheet" href="./lib/base.css" />
+		<style>
+			/* =============================================================
+			   Generic template — the clean baseline of the v1 type ramp +
+			   named regions (direction §2, §4). Nothing here invents a value:
+			   sizes/colors/spacing all resolve to --lep-* tokens. This file
+			   only does LAYOUT (placing the region helpers on the stage) and a
+			   couple of small composition affordances the shared base.css
+			   intentionally leaves to the template.
+			   ============================================================= */
+
+			/* The lockup carries an optional accent rule under the headline —
+			   a single hairline in the story color, never decoration for its
+			   own sake. Direction §5.10 (zero ornamental chrome): this is a
+			   typographic separator, not a container. */
+			.gen-rule {
+				width: 132px;
+				height: 6px;
+				border-radius: var(--lep-radius-full);
+				background: var(--lep-data-accent);
+				margin: var(--lep-space-4) 0 0 0;
+			}
+
+			/* Primary stage as a two-column composition: a hero figure on the
+			   left (the asset's one number), a supporting roster on the right
+			   that encodes its own metric (direction §5.13). Both stay inside
+			   the composition zone (x < 1574). We pin the box explicitly here so
+			   nothing strays into the presenter column and the grid never blows
+			   out (min-width:0 on tracks). */
+			.gen-primary {
+				/* override the shared region's defaults for this composition.
+				   Top-aligned so the hero + roster sit in the upper-middle band;
+				   the roster's stacked rows are the tallest element. The box runs
+				   from ~y470 to ~y930, clearing the bottom-right source strip. */
+				top: 470px;
+				bottom: 150px;
+				right: calc(var(--lep-stage-w) - var(--lep-comp-zone-w));
+				display: grid;
+				grid-template-columns: 520px minmax(0, 1fr);
+				column-gap: var(--lep-space-5);
+				align-items: stretch;
+			}
+			/* grid children must be allowed to shrink so the roster's big tabular
+			   values don't push the column past the composition zone. */
+			.gen-primary > * {
+				min-width: 0;
+			}
+			/* The hero is shorter than the roster's four stacked rows — center it
+			   in its cell so it reads as the anchored figure beside the list,
+			   rather than floating at the very top. */
+			.gen-hero {
+				align-self: start;
+			}
+			/* The roster column heading sits at the top of its cell. */
+			.gen-rostercol {
+				display: flex;
+				flex-direction: column;
+				justify-content: flex-start;
+			}
+			/* Tighten the roster's vertical rhythm so four stacked rows fit the
+			   action-safe band above the source strip. (Shared defaults are
+			   gap space-3 = 24px and a 10px bar margin.) */
+			.gen-primary .lep-roster {
+				gap: var(--lep-space-3);
+			}
+			.gen-primary .lep-roster-bar-wrap {
+				margin-top: 10px;
+				height: 16px;
+			}
+
+			/* Hero figure block: hero-number is the single largest thing on the
+			   frame (direction §2 hard ratio — ~3-4x the next-largest text). */
+			.gen-hero {
+				display: flex;
+				flex-direction: column;
+				/* keep the number / caption / trend as one cohesive block aligned
+				   to the top of the primary stage, level with the roster head. */
+				gap: var(--lep-space-1);
+			}
+			.gen-hero .gen-hero-value {
+				display: flex;
+				align-items: baseline;
+				gap: 14px;
+			}
+			.gen-hero .gen-hero-unit {
+				/* a small leading unit/prefix sharing the hero baseline ($, +, etc.) */
+				font-size: 92px;
+				font-weight: var(--lep-weight-black);
+				letter-spacing: var(--lep-tracking-hero);
+				color: var(--lep-ink-muted);
+				line-height: var(--lep-leading-tight);
+			}
+			.gen-hero .gen-hero-caption {
+				font-size: var(--lep-size-subhead);
+				font-weight: var(--lep-weight-medium);
+				color: var(--lep-ink-200);
+				line-height: var(--lep-leading-normal);
+				max-width: 440px;
+				margin-top: var(--lep-space-3);
+			}
+			/* a slim trend chip below the caption, semantic color only */
+			.gen-trend {
+				display: inline-flex;
+				align-items: center;
+				gap: 10px;
+				font-size: var(--lep-size-kicker);
+				font-weight: var(--lep-weight-bold);
+				letter-spacing: 0;
+				color: var(--lep-data-accent);
+				margin-top: var(--lep-space-3);
+			}
+			.gen-trend .gen-arrow {
+				font-size: var(--lep-size-kicker);
+				line-height: 1;
+			}
+
+			/* Roster column heading — small kicker-cased eyebrow over the bars. */
+			.gen-roster-head {
+				font-size: var(--lep-size-kicker);
+				font-weight: var(--lep-weight-bold);
+				letter-spacing: var(--lep-tracking-kicker);
+				text-transform: uppercase;
+				color: var(--lep-ink-muted);
+				margin: 0 0 var(--lep-space-4) 0;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="lep-stage-wrap">
+			<div class="lep-stage">
+				<!-- Background-media + scrim mounted by helpers (direction §4 /
+				     §5.4): kills the dead right-field a lone lockup would
+				     otherwise leave. Ambient image runs full-bleed; the
+				     left-weighted scrim keeps the lockup legible while letting
+				     the right of the field breathe. -->
+
+				<!-- ============ LOCKUP ZONE (top-left) ============ -->
+				<div class="lep-lockup">
+					<p class="lep-kicker" data-bind="eyebrow"></p>
+					<h1 class="lep-headline" data-bind="headline"></h1>
+					<div class="gen-rule" data-bind="rule" hidden></div>
+					<p class="lep-subhead" data-bind="subhead" style="max-width: 920px"></p>
+				</div>
+
+				<!-- ============ PRIMARY STAGE ============ -->
+				<div class="lep-primary-stage gen-primary">
+					<!-- hero figure (the asset's one number) -->
+					<div class="gen-hero" data-region="hero">
+						<div class="gen-hero-value">
+							<span class="gen-hero-unit" data-bind="hero.unit" hidden></span>
+							<span class="lep-hero-number" data-bind="hero.value"></span>
+						</div>
+						<p class="gen-hero-caption" data-bind="hero.caption"></p>
+						<div class="gen-trend" data-bind="hero.trend" hidden>
+							<span class="gen-arrow" data-bind="hero.trendArrow"></span>
+							<span data-bind="hero.trendText"></span>
+						</div>
+					</div>
+
+					<!-- supporting roster (encodes its own metric — §5.13) -->
+					<div class="gen-rostercol" data-region="rosterCol">
+						<p class="gen-roster-head" data-bind="rosterHeading" hidden></p>
+						<div id="roster"></div>
+					</div>
+				</div>
+
+			</div>
+		</div>
+
+		<!-- Inline copy of content.json + manifest.json. content.json remains the
+		     editable source of truth; the loader prefers fetch() (served over
+		     http in the on-air app) and falls back to these inline blocks so the
+		     bundle also renders from a file:// preview / capture harness, where
+		     cross-origin fetch of a sibling file is blocked. Keep in sync with
+		     content.json / manifest.json. -->
+		<script id="lep-content" type="application/json">
+{
+  "eyebrow": "Sample Briefing",
+  "headline": "Grid storage crosses a threshold",
+  "subhead": "An illustrative figure frame — every number here is sample data.",
+  "rule": true,
+  "hero": {
+    "unit": "+",
+    "value": "41%",
+    "caption": "Sample year-over-year growth in installed battery capacity across the demo region.",
+    "trendArrow": "▲",
+    "trendText": "11 quarters of gains",
+    "trendDir": "up"
+  },
+  "rosterHeading": "By demo zone — share of new capacity",
+  "roster": [
+    { "label": "North Plateau", "value": 46, "display": "46%" },
+    { "label": "Coastal Belt", "value": 33, "display": "33%" },
+    { "label": "River Valley", "value": 21, "display": "21%" }
+  ],
+  "sourceText": "Sample data · illustrative only",
+  "background": {
+    "scrim": "left",
+    "image": "data:image/svg+xml;utf8,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1920'%20height='1080'%3E%3Cdefs%3E%3CradialGradient%20id='g'%20cx='62%25'%20cy='44%25'%20r='86%25'%3E%3Cstop%20offset='0%25'%20stop-color='%23163050'/%3E%3Cstop%20offset='52%25'%20stop-color='%230f1d30'/%3E%3Cstop%20offset='100%25'%20stop-color='%230a0e14'/%3E%3C/radialGradient%3E%3ClinearGradient%20id='h'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0%25'%20stop-color='%23000000'%20stop-opacity='0'/%3E%3Cstop%20offset='100%25'%20stop-color='%23000000'%20stop-opacity='0.35'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='1920'%20height='1080'%20fill='url(%23g)'/%3E%3Cg%20stroke='%23234b73'%20stroke-width='1'%20opacity='0.16'%3E%3Cline%20x1='0'%20y1='270'%20x2='1920'%20y2='270'/%3E%3Cline%20x1='0'%20y1='540'%20x2='1920'%20y2='540'/%3E%3Cline%20x1='0'%20y1='810'%20x2='1920'%20y2='810'/%3E%3Cline%20x1='480'%20y1='0'%20x2='480'%20y2='1080'/%3E%3Cline%20x1='960'%20y1='0'%20x2='960'%20y2='1080'/%3E%3Cline%20x1='1440'%20y1='0'%20x2='1440'%20y2='1080'/%3E%3C/g%3E%3Crect%20width='1920'%20height='1080'%20fill='url(%23h)'/%3E%3C/svg%3E"
+  }
+}
+		</script>
+		<script id="lep-manifest" type="application/json">
+{ "version": 1, "createdAt": "2026-06-08T00:00:00Z" }
+		</script>
+
+		<script src="./lib/helpers.js"></script>
+		<script>
+			(async function () {
+				// Prefer fetch (http on-air); fall back to inline JSON (file://).
+				const inlineJSON = (id) => {
+					const node = document.getElementById(id);
+					if (!node) return null;
+					try {
+						return JSON.parse(node.textContent);
+					} catch (e) {
+						return null;
+					}
+				};
+				const loadOrInline = async (loader, id) => {
+					try {
+						return await loader();
+					} catch (e) {
+						const fallback = inlineJSON(id);
+						if (fallback) return fallback;
+						throw e;
+					}
+				};
+
+				const [manifest, content] = await Promise.all([
+					loadOrInline(leporello.loadManifest, 'lep-manifest'),
+					loadOrInline(leporello.loadContent, 'lep-content'),
+				]);
+
+				leporello.applyVersionStamp(manifest);
+
+				// ---- helpers --------------------------------------------
+				const setText = (sel, val) => {
+					const el = document.querySelector('[data-bind="' + sel + '"]');
+					if (el && val != null && String(val).length) el.textContent = val;
+				};
+				const reveal = (sel) => {
+					const el = document.querySelector(sel);
+					if (el) el.hidden = false;
+				};
+
+				// ---- lockup ---------------------------------------------
+				setText('eyebrow', content.eyebrow);
+				setText('headline', content.headline);
+				setText('subhead', content.subhead);
+				if (content.rule) reveal('[data-bind="rule"]');
+
+				// ---- hero figure ----------------------------------------
+				const hero = content.hero || {};
+				setText('hero.value', hero.value);
+				setText('hero.caption', hero.caption);
+				if (hero.unit) {
+					setText('hero.unit', hero.unit);
+					reveal('[data-bind="hero.unit"]');
+				}
+				if (hero.trendText) {
+					setText('hero.trendArrow', hero.trendArrow || '');
+					setText('hero.trendText', hero.trendText);
+					const t = document.querySelector('[data-bind="hero.trend"]');
+					if (t) {
+						t.hidden = false;
+						// semantic color: down = cool primary, flat = muted, up = accent
+						if (hero.trendDir === 'down') t.style.color = 'var(--lep-data-primary)';
+						else if (hero.trendDir === 'flat') t.style.color = 'var(--lep-ink-muted)';
+					}
+				}
+
+				// ---- supporting roster (§5.13) --------------------------
+				if (Array.isArray(content.roster) && content.roster.length) {
+					if (content.rosterHeading) {
+						setText('rosterHeading', content.rosterHeading);
+						reveal('[data-bind="rosterHeading"]');
+					}
+					leporello.renderRoster('#roster', content.roster, {
+						sort: content.rosterSort !== false,
+						leaderIndex:
+							content.rosterLeaderIndex === undefined
+								? 0
+								: content.rosterLeaderIndex,
+					});
+				}
+
+				// ---- background-media layer (direction §4 / §5.4) -------
+				// Optional. content.background = { image | video, scrim, poster }.
+				if (
+					content.background &&
+					(content.background.image || content.background.video)
+				) {
+					leporello.mountBackgroundMedia({
+						image: content.background.image,
+						video: content.background.video,
+						poster: content.background.poster,
+						scrim: content.background.scrim || 'left',
+					});
+				}
+
+				// fit last so any reflow from the above is captured
+				leporello.fitStage('.lep-stage');
+			})().catch((err) => {
+				console.error('[leporello-bundle] failed to bootstrap:', err);
+				document.body.innerHTML =
+					'<pre style="color:#f87171;padding:24px;font-family:monospace">' +
+					'Bundle failed to load: ' +
+					String(err && err.message ? err.message : err) +
+					'</pre>';
+			});
+		</script>
+	</body>
+</html>

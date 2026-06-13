@@ -1,0 +1,30 @@
+{
+  "kicker": "Who's Who · Sample Cabinet",
+  "headline": "Who's Running Northport",
+
+  "comment": "SAMPLE / illustrative content only — no real people, places, or organizations. A candidate-roster ('who's who') panel à la Kornacki: a vertical stack of a few LARGE rows, each a portrait tile + a proportional metric block carrying the big name and a hero value. Portraits are generated deterministic duotone monogram placeholders (initials), never fabricated photos. `metric` is the comparable value each row encodes as block width (direction §5.13 rosters-encode-their-metric); `metricLabel` names the unit and `metricDisplay` is the preformatted hero value. Keep this to ~4-5 faces — a wall of portraits transmits nothing on air.",
+
+  "metricLabel": "Approval",
+  "metricMax": 100,
+
+  "people": [
+    {
+      "id": "p1", "name": "Mara Voss", "role": "Mayor",
+      "metric": 61, "metricDisplay": "61%"
+    },
+    {
+      "id": "p2", "name": "Idris Cole", "role": "Deputy Mayor",
+      "metric": 54, "metricDisplay": "54%"
+    },
+    {
+      "id": "p3", "name": "Priya Anand", "role": "Budget Chief",
+      "metric": 47, "metricDisplay": "47%"
+    },
+    {
+      "id": "p4", "name": "Theo Brandt", "role": "Comptroller",
+      "metric": 39, "metricDisplay": "39%"
+    }
+  ],
+
+  "source": "Illustrative sample · not real polling"
+}

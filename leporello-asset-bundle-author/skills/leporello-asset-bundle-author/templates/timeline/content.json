@@ -1,0 +1,46 @@
+{
+  "eyebrow": "Sample Timeline",
+  "headline": "How the project came together",
+  "subhead": "Five sample milestones — illustrative content only.",
+  "dateMode": "month",
+  "dateRange": {
+    "start": "2024-02-01",
+    "end": "2026-05-01"
+  },
+  "source": "Illustrative sample data",
+  "background": {
+    "image": "./lib/timeline-bg.png"
+  },
+  "events": [
+    {
+      "date": "2024-02-15",
+      "title": "Idea sketched on a whiteboard",
+      "accent": false,
+      "sourceRefs": []
+    },
+    {
+      "date": "2024-09-10",
+      "title": "First working prototype demonstrated to the team",
+      "accent": false,
+      "sourceRefs": []
+    },
+    {
+      "date": "2025-04-22",
+      "title": "Public preview opens to a first wave of early testers",
+      "accent": true,
+      "sourceRefs": []
+    },
+    {
+      "date": "2025-11-05",
+      "title": "Team grows to twelve people",
+      "accent": false,
+      "sourceRefs": []
+    },
+    {
+      "date": "2026-05-01",
+      "title": "Version one ships to everyone",
+      "accent": false,
+      "sourceRefs": []
+    }
+  ]
+}

@@ -1,0 +1,226 @@
+/*
+ * Leporello v1 DLS — Design Tokens (CSS custom properties).
+ *
+ * Canonical v1 broadcast token set, implementing the M1 design direction
+ * (docs/prelim/dls/m1/direction/direction.md). Every restyled template
+ * includes this verbatim. Authoring is px-on-the-1920x1080-reference; the
+ * stage is scaled to the viewport by helpers.fitStage() — NEVER author in
+ * rem or pt.
+ *
+ * Source of truth for the DTCG export: dls/tokens.json. Edit there,
+ * then mirror here and into leporello-design-skill/tokens.css.
+ *
+ * Token names are part of the public API for client-built interactives —
+ * keep the --lep-* prefixes stable.
+ */
+
+/* =====================================================================
+   PRIMARY FONT — Libre Franklin (SIL OFL 1.1), self-hosted variable woff2.
+   Covers weights 400-900 (we use 400 / 500 / 600 / 700 / 800 / 900).
+   Registered under both the public family name and a stable alias so
+   either resolves to the vendored file. font-display:block avoids a FOIT
+   flash of a fallback metric mid-render (matters for headless capture).
+   ===================================================================== */
+@font-face {
+	font-family: 'Libre Franklin';
+	font-style: normal;
+	font-weight: 400 900;
+	font-display: block;
+	src: url('libre-franklin-latin-var.woff2') format('woff2');
+}
+@font-face {
+	font-family: 'Lep Primary';
+	font-style: normal;
+	font-weight: 400 900;
+	font-display: block;
+	src: url('libre-franklin-latin-var.woff2') format('woff2');
+}
+
+:root {
+	/* ---------------------------------------------------------------
+	   PALETTE — semantic roles (direction §3)
+	   max 2 categorical story colors OR one ≤5-stop sequential ramp +
+	   neutrals. Decoration color budget = 0.
+	   --------------------------------------------------------------- */
+
+	/* Surfaces — dark broadcast canvas (kept from foundation) */
+	--lep-surface-0: #0a0e14; /* deepest canvas / hero field */
+	--lep-surface-1: #141820; /* card / panel surface */
+	--lep-surface-2: #181e28; /* elevated / hover surface */
+	--lep-border: #1e2530;    /* divider on dark */
+
+	/* Legacy aliases (foundation names) — kept so older recipes resolve */
+	--lep-broadcast-0: var(--lep-surface-0);
+	--lep-broadcast-1: var(--lep-surface-1);
+	--lep-broadcast-2: var(--lep-surface-2);
+	--lep-broadcast-3: var(--lep-border);
+
+	/* Ink ramp on dark */
+	--lep-ink-100: #f9fafb;   /* headlines, hero numbers */
+	--lep-ink-200: #e0e0e0;   /* subhead / body */
+	--lep-ink-muted: #9ca3af; /* orientation / recessed labels */
+	--lep-ink-source: #666666;/* source / caption corner text */
+	/* Legacy numeric aliases */
+	--lep-ink-300: var(--lep-ink-muted);
+	--lep-ink-400: var(--lep-ink-source);
+
+	/* Data / story color (direction §3) */
+	--lep-data-primary: #4fb3ff; /* THE single-series data color */
+	--lep-data-accent: #ffb23f;  /* the one element that tells the story */
+
+	/* Sequential ramp — ≤5 classes, colorblind-safe, dark = more */
+	--lep-ramp-1: #deebf7;
+	--lep-ramp-2: #9ecae1;
+	--lep-ramp-3: #6baed6;
+	--lep-ramp-4: #3182bd;
+	--lep-ramp-5: #08519c;
+
+	/* Interactive / status chrome (kept) */
+	--lep-accent-interactive: #3b82f6;
+	--lep-accent: var(--lep-accent-interactive); /* legacy alias */
+	--lep-live-fresh: #22c55e;
+	--lep-live-stale: #f87171;
+	--lep-alert: #ef4444;
+
+	/* Telestration (direction §7) */
+	--lep-tele-default: #ff3b30;            /* TV-safe red, not pure #FF0000 */
+	--lep-tele-halo: rgba(0, 0, 0, 0.45);   /* dark halo behind a stroke */
+	--lep-tele-width-default: 8px;          /* @1080 default stroke width */
+
+	/* Label halo */
+	--lep-halo-white: #ffffff;
+	/* Standard featured-label halo (strong, low blur) and orientation halo */
+	--lep-halo-featured:
+		0 0 4px rgba(0, 0, 0, 0.98),
+		0 2px 6px rgba(0, 0, 0, 0.92),
+		0 0 14px rgba(0, 0, 0, 0.8);
+	--lep-halo-orientation: 0 0 2px rgba(0, 0, 0, 0.85);
+
+	/* Translucent overlays for legend / pill / card chrome (kept) */
+	--lep-overlay-legend: rgba(8, 12, 18, 0.62);
+	--lep-overlay-pill: rgba(8, 12, 18, 0.82);
+	--lep-overlay-card: rgba(17, 24, 39, 0.93);
+
+	/* Brand (kept) */
+	--lep-seal: #8b1a1a;
+	--lep-seal-shadow: #6b1010;
+	--lep-gold: #e8c96a;
+	--lep-gold-soft: #c9922a;
+
+	/* ---------------------------------------------------------------
+	   TYPE — family, ramp, weights, casing, tracking (direction §1, §2)
+	   All ramp sizes are px @ the 1920x1080 reference.
+	   --------------------------------------------------------------- */
+	--lep-font-sans: 'Libre Franklin', 'Lep Primary', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+	--lep-font-mono: 'SF Mono', Menlo, Consolas, monospace;
+
+	/* Type ramp — px @1080 (direction §2 table) */
+	--lep-size-hero-number: 150px;       /* the single most important figure */
+	--lep-size-headline: 84px;           /* the slide's one-sentence point */
+	--lep-size-headline-map: 72px;       /* headline variant on full-bleed maps */
+	--lep-size-data-label: 64px;         /* values annotated on bars/segments */
+	--lep-size-subhead: 40px;            /* one line of context */
+	--lep-size-kicker: 34px;             /* eyebrow / category */
+	--lep-size-legend: 34px;             /* legend rows — a storytelling tier */
+	--lep-size-label-featured: 40px;     /* featured (story) map place-labels */
+	--lep-size-label-orientation: 22px;  /* recessed basemap labels */
+	--lep-size-source: 22px;             /* source / attribution — absolute floor */
+
+	/* Weights — no Light/Thin anywhere (camera eats hairlines) */
+	--lep-weight-regular: 400;
+	--lep-weight-medium: 500;
+	--lep-weight-semibold: 600;
+	--lep-weight-bold: 700;
+	--lep-weight-extrabold: 800;
+	--lep-weight-black: 900;
+
+	/* Line heights */
+	--lep-leading-tight: 0.95;  /* hero numbers / one-line headlines */
+	--lep-leading-snug: 1.08;   /* multi-line headline */
+	--lep-leading-normal: 1.3;  /* subhead / body */
+
+	/* Tracking (direction §2 casing/tracking rules) */
+	--lep-tracking-hero: -0.02em;
+	--lep-tracking-headline: -0.01em;
+	--lep-tracking-kicker: 0.1em;
+	--lep-tracking-legend: 0.01em;
+	--lep-tracking-source: 0.04em;
+	--lep-tracking-tight: -0.01em;       /* legacy alias */
+	--lep-tracking-broadcast: 0.1em;     /* legacy alias */
+	--lep-tracking-wordmark: 0.2em;      /* legacy alias */
+
+	/* ---------------------------------------------------------------
+	   SPACING + SAFE AREA (direction §4)
+	   All measured against the 1920x1080 reference.
+	   --------------------------------------------------------------- */
+	--lep-stage-w: 1920px;
+	--lep-stage-h: 1080px;
+
+	/* Composition zone: x0 -> 1574 (left of the ~18% presenter column).
+	   Critical content (text/data/foreground panels) lives here. */
+	--lep-comp-zone-w: 1574px;
+	/* Presenter safe column: right ~18% (x1574 -> 1920). Ambient layers
+	   pass through; NO critical content. */
+	--lep-presenter-col: 18%;
+	--lep-presenter-col-x: 1574px;
+
+	/* Title-safe inset: ~90px L/R, 54px T/B, computed against the comp zone. */
+	--lep-title-safe-inset: 90px;
+	--lep-title-safe-inset-y: 54px;
+	/* Action-safe is a slightly tighter bleed allowance for decorative media. */
+	--lep-action-safe-inset: 54px;
+
+	/* Background-media scrim opacity floor/ceiling (direction §5.4) */
+	--lep-scrim-min: rgba(10, 14, 20, 0.55);
+	--lep-scrim-max: rgba(10, 14, 20, 0.78);
+
+	/* Spacing scale (px @1080) for stacks / gaps */
+	--lep-space-1: 8px;
+	--lep-space-2: 16px;
+	--lep-space-3: 24px;
+	--lep-space-4: 36px;
+	--lep-space-5: 54px;
+	--lep-space-6: 90px;
+
+	/* Radii (kept) */
+	--lep-radius-xs: 4px;
+	--lep-radius-sm: 6px;
+	--lep-radius-md: 8px;
+	--lep-radius-lg: 14px;
+	--lep-radius-full: 999px;
+
+	/* Shadow (kept) */
+	--lep-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+	--lep-shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
+	--lep-shadow-lg: 0 6px 24px rgba(0, 0, 0, 0.35);
+
+	/* Motion (kept) */
+	--lep-duration-fast: 120ms;
+	--lep-duration-med: 240ms;
+	--lep-duration-slow: 560ms;
+	--lep-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--lep-ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* Live pulse keyframe — used by the live-fresh dot in the live-pill recipe.
+   Reduced-motion users get a static dot. */
+@keyframes lep-live-pulse {
+	0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6); }
+	70% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+	100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.lep-live-pulse,
+	[data-lep-live-pulse] {
+		animation: none !important;
+	}
+}
+
+/* Tabular numerics utility — apply to any numeric content that updates so
+   numbers don't shift width on change. (base.css sets this stage-wide; this
+   utility is here for embeds that include only tokens.css.) */
+.lep-tabular,
+[data-lep-tabular] {
+	font-variant-numeric: tabular-nums;
+}

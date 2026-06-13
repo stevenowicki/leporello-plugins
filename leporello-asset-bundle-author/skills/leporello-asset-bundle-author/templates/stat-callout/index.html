@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Leporello stat-callout bundle</title>
+		<link rel="stylesheet" href="./lib/tokens.css" />
+		<link rel="stylesheet" href="./lib/base.css" />
+		<style>
+			/* =================================================================
+			   STAT-CALLOUT — v1 DLS restyle (M2)
+			   Pattern: ONE 150px+ hero-number is the star. A kicker eyebrow and a
+			   headline sit above it (lockup zone, top-left); the hero-number +
+			   its label own the primary stage; one short context line closes it.
+
+			   Composition (direction §4/§5):
+			     - All critical content stays LEFT of the x1574 composition zone.
+			     - A full-bleed ambient background-media layer (SVG texture) fills
+			       what would otherwise be a dead right field, behind a mandatory
+			       left-weighted scrim — so the frame "reads composed, not empty."
+			     - The hero-number is ~3-4x the next-largest text (the headline),
+			       per the hard ratio in §2. Tabular figures throughout.
+
+			   We override only POSITION + a couple of stat-specific accents on top
+			   of the .lep-* type roles from base.css; the type sizes themselves
+			   come from the tokens so the ramp can't drift.
+			   ================================================================= */
+
+			/* Lockup pinned top-left in the title-safe inset. */
+			.lep-lockup {
+				top: 72px;
+				max-width: 1380px;
+			}
+			.lep-headline {
+				margin-top: 10px;
+				max-width: 1380px;
+			}
+
+			/* The hero block: number + its label, vertically centered in the lower
+			   two-thirds of the frame (the primary stage) so the big figure owns
+			   the visual center of gravity below the lockup. */
+			.stat-hero {
+				position: absolute;
+				left: var(--lep-title-safe-inset);
+				top: 400px;
+				bottom: 250px;
+				max-width: var(--lep-comp-zone-w);
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+			}
+
+			/* Hero number. Base role is 150px / 900; a lone short figure goes large
+			   (per §2: "May go to 200px for a lone number") — here 270px so it reads
+			   as ~3x the headline and unambiguously the star. Auto-scaled down by
+			   character length via [data-len] so a wide value never busts the zone. */
+			.lep-hero-number {
+				font-size: 270px;
+				line-height: var(--lep-leading-tight);
+				display: inline-block;
+				text-shadow: 0 6px 38px rgba(0, 0, 0, 0.55);
+			}
+			.lep-hero-number[data-len='medium'] {
+				font-size: 224px;
+			}
+			.lep-hero-number[data-len='long'] {
+				font-size: 168px;
+			}
+			.lep-hero-number[data-len='xlong'] {
+				font-size: 128px;
+			}
+
+			/* The trend delta rides the hero's top-right shoulder like a ticker
+			   delta — colored data-accent. It is the supporting figure, not a
+			   competitor: data-label tier max, dropped below the number's cap. */
+			.stat-hero-row {
+				display: flex;
+				align-items: flex-start;
+				gap: 30px;
+			}
+			.stat-delta {
+				display: none; /* shown by JS only when a comparison is supplied */
+				flex-direction: column;
+				gap: 4px;
+				padding-top: 56px; /* drop it off the number's cap line */
+			}
+			.stat-delta-value {
+				font-size: var(--lep-size-data-label);
+				font-weight: var(--lep-weight-black);
+				color: var(--lep-data-accent);
+				font-variant-numeric: tabular-nums;
+				line-height: 1;
+				letter-spacing: var(--lep-tracking-headline);
+				text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+			}
+			.stat-delta-label {
+				font-size: 26px;
+				font-weight: var(--lep-weight-semibold);
+				color: var(--lep-ink-muted);
+				letter-spacing: 0.06em;
+				text-transform: uppercase;
+			}
+
+			/* The hero LABEL — what the number measures. Sits directly under the
+			   number, tight. Subhead tier; never larger than the number (value >=
+			   its label is structurally guaranteed: 132-200px vs 40px). */
+			.stat-hero-label {
+				font-size: var(--lep-size-subhead);
+				font-weight: var(--lep-weight-bold);
+				color: var(--lep-ink-100);
+				letter-spacing: 0;
+				margin: 16px 0 0 0;
+				max-width: 1240px;
+				line-height: 1.1;
+				text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+			}
+
+			/* One short context line, bottom-left, restrained — the only sentence
+			   on the frame besides the headline. A thin accent rule ties it to the
+			   story color without adding a decorative container. */
+			.stat-context {
+				position: absolute;
+				left: var(--lep-title-safe-inset);
+				bottom: 110px;
+				max-width: 1180px;
+				padding-left: 30px;
+				font-size: var(--lep-size-kicker);
+				font-weight: var(--lep-weight-regular);
+				line-height: 1.32;
+				color: var(--lep-ink-muted);
+				text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7);
+			}
+			.stat-context::before {
+				content: '';
+				position: absolute;
+				left: 0;
+				top: 6px;
+				width: 6px;
+				height: calc(100% - 12px);
+				border-radius: var(--lep-radius-full);
+				background: var(--lep-data-primary);
+			}
+		</style>
+	</head>
+	<body>
+		<div class="lep-stage-wrap">
+			<div class="lep-stage">
+				<!-- The ambient background-media layer (.lep-bg-media) is mounted
+				     by JS as the first child of .lep-stage so it sits behind all
+				     content. It carries the mandatory left-weighted scrim. -->
+
+				<!-- Lockup zone — top-left: kicker + headline. -->
+				<div class="lep-lockup">
+					<div class="lep-kicker" data-bind="eyebrow"></div>
+					<h1 class="lep-headline" data-bind="headline"></h1>
+				</div>
+
+				<!-- Primary stage — the hero number is the star. -->
+				<div class="stat-hero">
+					<div class="stat-hero-row">
+						<div class="lep-hero-number" data-bind="stat-value"></div>
+						<div class="stat-delta" id="delta">
+							<span class="stat-delta-value" data-bind="comparison-value"></span>
+							<span class="stat-delta-label" data-bind="comparison-label"></span>
+						</div>
+					</div>
+					<p class="stat-hero-label" data-bind="stat-label"></p>
+				</div>
+
+				<!-- One short context line, bottom-left. -->
+				<p class="stat-context" data-bind="context"></p>
+
+			</div>
+		</div>
+
+		<!-- Inline copies of manifest + content. These let the bundle render
+		     standalone over file:// (where fetch of sibling files is blocked by
+		     the browser). When served over HTTP, content.json / manifest.json win
+		     and these are only a fallback — keep them in sync if you hand-edit. -->
+		<script type="application/json" id="inline-content">
+			{
+				"eyebrow": "Sample Data · Illustrative",
+				"headline": "Renewables now power most of the grid",
+				"stat": {
+					"value": "68%",
+					"label": "of the sample regional grid ran on renewables last quarter"
+				},
+				"comparison": { "value": "+14 pts", "label": "vs. year ago" },
+				"context": "Up from just over half a year earlier — the fastest single-year shift on record for this illustrative dataset.",
+				"background": { "image": "./lib/bg-relief.svg", "scrim": "left" },
+				"source": "Sample dataset · illustrative figures, not real measurements",
+				"sourceRefs": []
+			}
+		</script>
+		<script type="application/json" id="inline-manifest">
+			{ "version": 1, "createdAt": "2026-06-08T00:00:00Z" }
+		</script>
+		<script src="./lib/helpers.js"></script>
+		<script>
+			function inlineJSON(id) {
+				const el = document.getElementById(id);
+				if (!el) return null;
+				try { return JSON.parse(el.textContent); } catch (e) { return null; }
+			}
+			async function loadOrInline(loader, inlineId) {
+				try { return await loader(); } catch (e) { return inlineJSON(inlineId); }
+			}
+			(async function () {
+				const [manifest, content] = await Promise.all([
+					loadOrInline(leporello.loadManifest, 'inline-manifest'),
+					loadOrInline(leporello.loadContent, 'inline-content'),
+				]);
+
+				leporello.applyVersionStamp(manifest);
+
+				// Ambient background-media layer behind everything (direction §5.4).
+				// A self-contained SVG data-relief texture — illustrative, low-motion,
+				// low-contrast — so the frame reads composed, never an empty dark
+				// field. Mandatory left-weighted scrim keeps the lockup legible.
+				const bg = content.background || {};
+				leporello.mountBackgroundMedia({
+					stage: '.lep-stage',
+					image: bg.image || './lib/bg-relief.svg',
+					scrim: bg.scrim || 'left',
+				});
+
+				// Simple text bindings.
+				['eyebrow', 'headline'].forEach((key) => {
+					const el = document.querySelector('[data-bind="' + key + '"]');
+					if (el && content[key]) el.textContent = content[key];
+				});
+
+				// Hero number — the star. Auto-scale by character length so a wide
+				// figure stays inside the composition zone.
+				const valueEl = document.querySelector('[data-bind="stat-value"]');
+				if (valueEl) {
+					const v = (content.stat && content.stat.value) || '';
+					valueEl.textContent = v;
+					const len = v.replace(/\s/g, '').length;
+					if (len > 9) valueEl.dataset.len = 'xlong';
+					else if (len > 7) valueEl.dataset.len = 'long';
+					else if (len > 5) valueEl.dataset.len = 'medium';
+				}
+
+				const labelEl = document.querySelector('[data-bind="stat-label"]');
+				if (labelEl) labelEl.textContent = (content.stat && content.stat.label) || '';
+
+				const ctxEl = document.querySelector('[data-bind="context"]');
+				if (ctxEl) {
+					if (content.context) ctxEl.textContent = content.context;
+					else ctxEl.style.display = 'none';
+				}
+
+				// Optional trend delta (the supporting figure).
+				const comp = content.comparison;
+				if (comp && comp.value) {
+					const deltaEl = document.getElementById('delta');
+					deltaEl.style.display = 'flex';
+					deltaEl.querySelector('[data-bind="comparison-value"]').textContent =
+						comp.value;
+					deltaEl.querySelector('[data-bind="comparison-label"]').textContent =
+						comp.label || '';
+				}
+
+				leporello.fitStage('.lep-stage');
+			})().catch((err) => {
+				console.error('[leporello-bundle] failed to bootstrap:', err);
+				document.body.innerHTML =
+					'<pre style="color:#f87171;padding:24px;font-family:monospace">' +
+					'Bundle failed to load: ' +
+					String(err && err.message ? err.message : err) +
+					'</pre>';
+			});
+		</script>
+	</body>
+</html>

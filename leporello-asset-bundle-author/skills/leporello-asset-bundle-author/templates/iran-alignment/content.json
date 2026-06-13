@@ -1,0 +1,65 @@
+{
+  "eyebrow": "Regional Alignment",
+  "headline": "Two Blocs, One Strait",
+
+  "basemap": { "styleUrl": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
+  "camera": { "center": [50, 27], "zoom": 3.7, "pitch": 0, "bearing": 0 },
+  "bounds": [[34, 12], [64, 40]],
+
+  "comment": "SAMPLE / ILLUSTRATIVE content for the v1 DLS restyle. Country geometry comes from the shared geo layer (admin0 PMTiles) at runtime — no inline geometry. `groups` define the alignment colors + legend; `snapshots` assign countries (ISO-3166 alpha-3) to groups, stepping through a hypothetical shift. `bounds` is the [[w,s],[e,n]] camera frame fit on load. Featured/orientation labels carry `lngLat` (geo-anchored on the live map, so they track pan/zoom) plus `x`/`y` (used only by the offline static-SVG harness). The harness/offline build shows a static SVG fallback that mirrors the live choropleth. Nothing here represents a real assessment of any state's foreign policy.",
+
+  "groups": [
+    { "id": "bloc-a", "label": "Bloc A — sample", "color": "#4fb3ff" },
+    { "id": "bloc-b", "label": "Bloc B — sample", "color": "#ffb23f" },
+    { "id": "nonaligned", "label": "Non-aligned", "color": "#9ca3af" }
+  ],
+
+  "snapshots": [
+    {
+      "id": "s1",
+      "label": "Baseline",
+      "caption": "Sample baseline alignment — illustrative only, not a real assessment.",
+      "members": {
+        "bloc-a": ["IRN", "SYR", "IRQ"],
+        "bloc-b": ["SAU", "ARE", "ISR", "BHR"],
+        "nonaligned": ["TUR", "QAT", "OMN", "KWT"]
+      }
+    },
+    {
+      "id": "s2",
+      "label": "Shift",
+      "caption": "A sample realignment — one state moves to non-aligned, another joins Bloc B.",
+      "members": {
+        "bloc-a": ["IRN", "SYR"],
+        "bloc-b": ["SAU", "ARE", "ISR", "BHR", "KWT"],
+        "nonaligned": ["TUR", "QAT", "OMN", "IRQ"]
+      }
+    },
+    {
+      "id": "s3",
+      "label": "Consolidation",
+      "caption": "A sample consolidation — blocs harden and the non-aligned middle narrows.",
+      "members": {
+        "bloc-a": ["IRN", "SYR", "IRQ"],
+        "bloc-b": ["SAU", "ARE", "ISR", "BHR", "KWT", "QAT"],
+        "nonaligned": ["TUR", "OMN"]
+      }
+    }
+  ],
+
+  "featuredLabels": [
+    { "text": "Strait of Hormuz", "lngLat": [56.3, 26.6], "x": 1206, "y": 560, "pill": true, "kind": "primary" },
+    { "text": "Tehran", "lngLat": [51.39, 35.69], "x": 812, "y": 286, "kind": "dot" }
+  ],
+
+  "orientationLabels": [
+    { "text": "IRAN", "lngLat": [53.0, 32.5], "x": 760, "y": 360 },
+    { "text": "SAUDI ARABIA", "lngLat": [45.0, 24.0], "x": 470, "y": 660 },
+    { "text": "U.A.E. · OMAN", "lngLat": [56.0, 22.5], "x": 1150, "y": 760 },
+    { "text": "Persian Gulf", "lngLat": [51.5, 27.5], "x": 700, "y": 560, "sea": true },
+    { "text": "Gulf of Oman", "lngLat": [59.0, 24.5], "x": 1340, "y": 610, "sea": true }
+  ],
+
+  "unassignedColor": "rgba(120,130,150,0.16)",
+  "sourceRefs": []
+}

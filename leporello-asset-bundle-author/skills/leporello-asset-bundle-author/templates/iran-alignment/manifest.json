@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "[CLAUDE-PLACEHOLDER:slug]",
+  "title": "[CLAUDE-PLACEHOLDER:title]",
+  "slug": "[CLAUDE-PLACEHOLDER:slug]",
+  "entry": "index.html",
+  "content": "content.json",
+  "brief": "brief.md",
+  "attribution": "[CLAUDE-PLACEHOLDER:attribution]",
+  "description": "[CLAUDE-PLACEHOLDER:description]",
+  "sources": [],
+  "generatedBy": "claude-leporello-skill@0.1.0",
+  "editorialReview": null,
+  "createdAt": "[CLAUDE-PLACEHOLDER:iso8601-now]",
+  "dimensions": { "aspectRatio": "16:9", "minWidth": 1280, "minHeight": 720 },
+  "dlsVersion": "1.5",
+  "telestrator": "map",
+  "externalDependencies": [
+    "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js",
+    "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css",
+    "https://unpkg.com/pmtiles@4.4.1/dist/pmtiles.js",
+    "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+  ],
+  "tags": ["map", "alignment", "geopolitics", "snapshot"]
+}

@@ -1,0 +1,425 @@
+/*
+ * Leporello v1 DLS — bundle base styles.
+ *
+ * Reset + the 1920x1080 stage + named-region helpers + the background-media
+ * layer + broadcast type roles, all implementing the M1 direction
+ * (docs/prelim/dls/m1/direction/direction.md). Imported by every restyled
+ * template on top of tokens.css.
+ *
+ * Templates render inside an on-air iframe — the app draws the real nav rail
+ * and telestrator. So this file contains NO nav chrome of its own.
+ *
+ * Authoring model: lay content out in px on a 1920x1080 `.lep-stage`; the
+ * stage is scaled to the viewport (contain) by helpers.fitStage().
+ *
+ *   Critical content (headline, hero number, legend, data labels, foreground
+ *   panels) stays LEFT of x1574 (the composition zone) and inside title-safe.
+ *   Ambient layers (.lep-bg-media, maps) may run full-bleed edge-to-edge.
+ */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+	background: #000;
+	color: var(--lep-ink-100);
+	font-family: var(--lep-font-sans);
+	font-feature-settings: 'tnum' 1; /* tabular figures everywhere by default */
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+}
+
+body {
+	min-height: 100vh;
+	overflow: hidden;
+}
+
+/* =====================================================================
+   THE STAGE
+   .lep-stage is the fixed-size 1920x1080 authoring canvas. helpers.fitStage()
+   scales it to the viewport (contain). The .lep-stage-wrap centers it and
+   provides the letterbox field around it.
+   ===================================================================== */
+.lep-stage-wrap {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--lep-surface-0);
+	overflow: hidden;
+}
+
+.lep-stage {
+	position: relative;
+	width: var(--lep-stage-w);
+	height: var(--lep-stage-h);
+	transform-origin: center center;
+	background: var(--lep-surface-0);
+	color: var(--lep-ink-100);
+	overflow: hidden;
+	flex: none;
+}
+
+/* =====================================================================
+   BACKGROUND-MEDIA LAYER (direction §4 + §5.4)
+   Optional full-bleed image OR video behind all content. Runs edge-to-edge
+   (ambient — the presenter stands in front). MUST carry the .lep-bg-scrim
+   for legibility. Mount via helpers.mountBackgroundMedia().
+   ===================================================================== */
+.lep-bg-media {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	overflow: hidden;
+	background: var(--lep-surface-0);
+}
+
+.lep-bg-media > img,
+.lep-bg-media > video {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	/* low-contrast + slightly desaturated so it reads ambient, never competing
+	   with the data (direction §5.4). */
+	filter: saturate(0.85) brightness(0.9);
+}
+
+/* MANDATORY legibility scrim over background media. Default is the mid value
+   of the §5.4 range; .lep-bg-scrim--heavy bumps it for busy imagery, and the
+   left-weighted variant darkens behind the lockup while keeping the center
+   bright (the hormuz-map pattern). */
+.lep-bg-scrim {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	pointer-events: none;
+	background: rgba(10, 14, 20, 0.66); /* within the 0.55-0.78 mandate */
+}
+.lep-bg-scrim--heavy {
+	background: rgba(10, 14, 20, 0.78);
+}
+.lep-bg-scrim--left {
+	background: linear-gradient(
+		90deg,
+		rgba(7, 11, 18, 0.82) 0%,
+		rgba(7, 11, 18, 0.5) 24%,
+		rgba(7, 11, 18, 0.12) 44%,
+		rgba(7, 11, 18, 0) 56%
+	);
+}
+
+/* Everything authored sits above the background layer. Use :where() so this
+   rule contributes ZERO specificity — it must not override a child's own
+   position (e.g. the absolutely-positioned .lep-lockup region helper).
+   Children that are statically positioned get a stacking context via
+   isolation so the z-index intent still holds without forcing position. */
+.lep-stage > :where(:not(.lep-bg-media)) {
+	z-index: 2;
+	isolation: isolate;
+}
+
+/* =====================================================================
+   NAMED REGIONS (direction §4)
+   Absolute-positioned helpers, all measured against the 1920x1080 stage.
+   Critical-content regions are clamped to the composition zone (x < 1574).
+   ===================================================================== */
+
+/* Lockup zone — top-left: kicker + headline (+ optional subhead). */
+.lep-lockup {
+	position: absolute;
+	left: var(--lep-title-safe-inset);
+	top: var(--lep-title-safe-inset-y);
+	max-width: 1180px; /* well inside the composition zone */
+}
+
+/* Primary stage — main graphic area (chart / hero number / panels). Fills the
+   composition-zone width; never strands content in the right presenter column. */
+.lep-primary-stage {
+	position: absolute;
+	left: var(--lep-title-safe-inset);
+	top: 260px;
+	right: calc(var(--lep-stage-w) - var(--lep-comp-zone-w) + var(--lep-title-safe-inset));
+	bottom: 130px;
+}
+
+/* Legend zone — bottom-left. First-class component, large swatches, ≥30px rows.
+   Local dark backdrop so it reads over a bright basemap. */
+.lep-legend {
+	position: absolute;
+	left: var(--lep-title-safe-inset);
+	bottom: var(--lep-space-6);
+	display: flex;
+	flex-direction: column;
+	gap: var(--lep-space-2);
+	background: var(--lep-overlay-legend);
+	padding: 20px 26px 22px 22px;
+	border-radius: var(--lep-radius-lg);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	backdrop-filter: blur(3px);
+}
+.lep-legend .lep-legend-row {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	font-size: var(--lep-size-legend);
+	font-weight: var(--lep-weight-semibold);
+	letter-spacing: var(--lep-tracking-legend);
+	color: var(--lep-ink-100);
+	white-space: nowrap;
+}
+.lep-legend .lep-swatch {
+	width: 40px;
+	height: 40px;
+	border-radius: var(--lep-radius-md);
+	flex: none;
+	border: 1.5px solid rgba(255, 255, 255, 0.22);
+}
+
+/* =====================================================================
+   ATTRIBUTION IS METADATA, NOT A FRAME ELEMENT (direction §4 + §5.14)
+   The on-frame source strip / attribution chip is REMOVED. Source and
+   attribution are captured as metadata (the .lepo manifest + the skill's
+   sourcing discipline) and cited verbally by the presenter — they are
+   NEVER drawn on the broadcast frame.
+
+   These classes are retained ONLY as a hard kill-switch: any residual
+   attribution markup left in a template renders nothing. Do not author
+   new on-frame attribution against them. (A producer-optional attribution
+   element may be redesigned later; it is not a default and not this.)
+   ===================================================================== */
+.lep-source,
+.lep-source-tag,
+.lep-source-text,
+.lep-caption {
+	display: none !important;
+}
+
+/* =====================================================================
+   TYPE ROLES (direction §2)
+   Sized in px @1080. Casing + tracking baked in per the ramp's rules.
+   Numeric tiers default to tabular figures.
+   ===================================================================== */
+.lep-kicker {
+	font-size: var(--lep-size-kicker);
+	font-weight: var(--lep-weight-bold);
+	letter-spacing: var(--lep-tracking-kicker);
+	text-transform: uppercase;
+	color: var(--lep-data-primary);
+	margin: 0 0 18px 0;
+	text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+
+.lep-headline {
+	font-size: var(--lep-size-headline);
+	font-weight: var(--lep-weight-extrabold);
+	line-height: var(--lep-leading-snug);
+	letter-spacing: var(--lep-tracking-headline);
+	color: var(--lep-ink-100);
+	margin: 0;
+	text-shadow: 0 3px 22px rgba(0, 0, 0, 0.6);
+}
+/* Headline variant for full-bleed map frames. */
+.lep-headline--map {
+	font-size: var(--lep-size-headline-map);
+}
+
+.lep-subhead {
+	font-size: var(--lep-size-subhead);
+	font-weight: var(--lep-weight-regular);
+	line-height: var(--lep-leading-normal);
+	color: var(--lep-ink-200);
+	margin: 22px 0 0 0;
+	text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
+}
+
+.lep-hero-number {
+	font-size: var(--lep-size-hero-number);
+	font-weight: var(--lep-weight-black);
+	line-height: var(--lep-leading-tight);
+	letter-spacing: var(--lep-tracking-hero);
+	color: var(--lep-ink-100);
+	font-variant-numeric: tabular-nums;
+	margin: 0;
+}
+
+.lep-data-label {
+	font-size: var(--lep-size-data-label);
+	font-weight: var(--lep-weight-extrabold);
+	letter-spacing: var(--lep-tracking-headline);
+	color: var(--lep-ink-100);
+	font-variant-numeric: tabular-nums;
+}
+
+/* =====================================================================
+   MAP LABEL TIERS (direction §6)
+   Two explicit tiers. Featured dominates; orientation recedes.
+   ===================================================================== */
+.lep-label-featured {
+	position: absolute;
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	transform: translate(-50%, -50%);
+	white-space: nowrap;
+	font-size: var(--lep-size-label-featured);
+	font-weight: var(--lep-weight-bold);
+	letter-spacing: -0.005em;
+	color: var(--lep-ink-100);
+	text-shadow: var(--lep-halo-featured);
+}
+/* Optional pill backdrop for the 1-2 marquee labels. */
+.lep-label-featured.lep-pill {
+	background: var(--lep-overlay-pill);
+	border: 2px solid rgba(255, 255, 255, 0.2);
+	padding: 10px 22px;
+	border-radius: var(--lep-radius-lg);
+	backdrop-filter: blur(2px);
+	box-shadow: var(--lep-shadow-lg);
+}
+
+.lep-label-orientation {
+	position: absolute;
+	transform: translate(-50%, -50%);
+	white-space: nowrap;
+	font-size: var(--lep-size-label-orientation);
+	font-weight: var(--lep-weight-regular);
+	letter-spacing: 0.02em;
+	color: var(--lep-ink-muted);
+	opacity: 0.7;
+	text-shadow: var(--lep-halo-orientation);
+}
+
+/* Universal label-halo utility (dark text + white halo — direction §5.11). */
+.lep-halo {
+	color: #111827;
+	text-shadow:
+		0 0 3px var(--lep-halo-white),
+		0 0 3px var(--lep-halo-white),
+		0 0 6px var(--lep-halo-white);
+}
+
+/* On-bar label halo (direction §5.13).
+   Any text that sits OVER a variable-length bar must stay legible when the
+   bar is short and the text overflows onto the dark track behind it — so it
+   can rely on neither the fill color nor the track color being behind it.
+   White text + a dark outline halo reads over both the bright fill and the
+   dark track. paint-order:stroke draws the stroke under the glyph; the
+   text-shadow ring is the fallback for engines without text-stroke support.
+   Use on any roster label, segment label, or value placed inside a bar. */
+.lep-on-bar {
+	color: var(--lep-ink-100);
+	-webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.85);
+	paint-order: stroke fill;
+	text-shadow:
+		0 0 3px rgba(0, 0, 0, 0.92),
+		0 1px 4px rgba(0, 0, 0, 0.85),
+		0 0 8px rgba(0, 0, 0, 0.7);
+}
+
+/* =====================================================================
+   ROSTER BARS (direction §5.13)
+   Per-row proportional fill so the eye gets the ranking before the digit.
+   Markup is built by helpers.renderRoster(); these are the styles it expects.
+   ===================================================================== */
+.lep-roster {
+	display: flex;
+	flex-direction: column;
+	gap: var(--lep-space-3);
+	width: 100%;
+}
+.lep-roster-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	align-items: center;
+	column-gap: var(--lep-space-3);
+}
+.lep-roster-bar-wrap {
+	grid-column: 1 / -1;
+	position: relative;
+	height: 14px;
+	border-radius: var(--lep-radius-full);
+	background: rgba(255, 255, 255, 0.08);
+	margin-top: 10px;
+	overflow: hidden;
+}
+.lep-roster-bar {
+	position: absolute;
+	inset: 0 auto 0 0;
+	border-radius: var(--lep-radius-full);
+	background: var(--lep-data-primary);
+}
+.lep-roster-bar--leader {
+	background: var(--lep-data-accent);
+}
+.lep-roster-label {
+	font-size: var(--lep-size-subhead);
+	font-weight: var(--lep-weight-bold);
+	color: var(--lep-ink-100);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.lep-roster-value {
+	/* value >= its label (direction §5.5 / §5.13) */
+	font-size: var(--lep-size-data-label);
+	font-weight: var(--lep-weight-black);
+	color: var(--lep-ink-100);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+/* On-bar roster variant (direction §5.13).
+   When the label rides INSIDE the bar instead of above it, the name overflows
+   onto the dark track whenever the bar is short — so it must carry the on-bar
+   halo (.lep-on-bar) to stay legible against both the fill and the track. The
+   renderRoster({ onBar:true }) path emits this markup. */
+.lep-roster--on-bar .lep-roster-bar-wrap {
+	height: var(--lep-size-subhead);
+	border-radius: var(--lep-radius-md);
+	margin-top: 0;
+	overflow: visible;
+}
+.lep-roster--on-bar .lep-roster-bar {
+	border-radius: var(--lep-radius-md);
+}
+.lep-roster--on-bar .lep-roster-label {
+	position: absolute;
+	left: 18px;
+	top: 50%;
+	transform: translateY(-50%);
+	z-index: 1;
+	color: var(--lep-ink-100);
+	-webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.85);
+	paint-order: stroke fill;
+	text-shadow:
+		0 0 3px rgba(0, 0, 0, 0.92),
+		0 1px 4px rgba(0, 0, 0, 0.85),
+		0 0 8px rgba(0, 0, 0, 0.7);
+}
+
+/* Tabular numerics utility. */
+.lep-tabular,
+[data-lep-tabular] {
+	font-variant-numeric: tabular-nums;
+}
+
+/* Reduced-motion users get instant transitions. */
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+	}
+}

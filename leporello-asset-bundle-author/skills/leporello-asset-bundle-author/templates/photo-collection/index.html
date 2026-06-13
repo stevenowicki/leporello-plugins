@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Leporello photo-collection bundle</title>
+		<link rel="stylesheet" href="./lib/tokens.css" />
+		<link rel="stylesheet" href="./lib/base.css" />
+		<style>
+			/* =================================================================
+			   PHOTO-COLLECTION — v1 DLS restyle (broadcast-grade rebuild).
+
+			   The "who's who" / candidate-roster shape, authored on the
+			   1920x1080 .lep-stage and scaled by fitStage(). Templates render
+			   inside an on-air iframe — the app draws the real nav rail +
+			   telestrator, so this file draws NO chrome of its own.
+
+			   Reference: Kornacki candidate panel (examples/img/kornacki-1).
+			   A VERTICAL roster of a few LARGE rows, each row = a portrait tile
+			   on the left + a wide proportional metric block carrying the big
+			   name, the role, and a huge tabular value. The block's WIDTH is the
+			   metric (leader longest, in data-accent) so the eye reads the
+			   ranking before any digit (direction §5.13). NOT a grid of tiny
+			   clickable cards.
+
+			   Rebuild decisions (vs. the version that failed review 3/5):
+			   - NO filter tabs. Viewers can't click; the presenter navigates via
+			     Leporello assets. Interactive chrome is clutter on a wall.
+			   - NO per-card "ILLUSTRATIVE" badges. One global SAMPLE tag in the
+			     lockup is enough.
+			   - FOUR large rows (not five cramped cards), each ~190px tall, so
+			     the name reads at the data-label tier and the value is a hero.
+			   - The metric is ENCODED as block width (proportional, leader
+			     longest), with the big tabular % as the hero (direction §5.13).
+			   - Left-weighted, fills the composition-zone width (ends before the
+			     ~18% presenter column at x1574). Background-media + scrim seats
+			     the lockup and kills the dead field (direction §4 + §5.4).
+			   - Honest format: a PHOTO collection shipped with no licensed real
+			     headshots, so portraits are clearly-designed duotone monogram
+			     placeholders (never fabricated photos). The single SAMPLE tag
+			     keeps the framing unmistakable.
+			   ================================================================= */
+
+			/* The m2 base.css generic rule `.lep-stage > :not(.lep-bg-media)`
+			   forces position:relative on every direct child, clobbering the
+			   absolute placement of the predefined regions. Re-assert absolute
+			   with matching specificity, later in the cascade. */
+			.lep-stage .lep-lockup,
+			.lep-stage .lep-source,
+			.lep-stage .pc-roster {
+				position: absolute;
+				z-index: 2;
+			}
+
+			/* ---- SAMPLE tag — one global tag, makes the sample framing clear */
+			.pc-sample-badge {
+				display: inline-flex;
+				align-items: center;
+				margin-bottom: 18px;
+				font-family: var(--lep-font-sans);
+				font-size: var(--lep-size-source);
+				font-weight: var(--lep-weight-bold);
+				letter-spacing: 0.16em;
+				text-transform: uppercase;
+				color: var(--lep-surface-0);
+				background: var(--lep-data-accent);
+				border-radius: var(--lep-radius-full);
+				padding: 7px 20px;
+				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+			}
+
+			/* =================================================================
+			   THE ROSTER — vertical stack of large rows, left-weighted, filling
+			   the composition zone. Sits under the 2-line lockup.
+			   ================================================================= */
+			.pc-roster {
+				left: var(--lep-title-safe-inset);
+				/* below the lockup (sample tag + kicker + 1-line headline) */
+				top: 320px;
+				/* right edge = composition-zone right inset (clears presenter col) */
+				right: calc(
+					var(--lep-stage-w) - var(--lep-comp-zone-w) +
+						var(--lep-title-safe-inset)
+				);
+				/* attribution is no longer drawn (direction §5.14), so the roster
+				   reclaims the lower frame; keep a comfortable bottom margin within
+				   action-safe so the last row's value clears the corner. */
+				bottom: 96px;
+				display: flex;
+				flex-direction: column;
+				gap: 22px;
+			}
+
+			.pc-row {
+				position: relative;
+				flex: 1;
+				min-height: 0;
+				display: flex;
+				align-items: stretch;
+				gap: 0;
+			}
+
+			/* ---- Portrait tile — designed duotone monogram, NOT a photo ---- */
+			.pc-photo {
+				flex: none;
+				/* square-ish tile, height-driven so it matches the row height */
+				aspect-ratio: 1 / 1;
+				height: 100%;
+				display: block;
+				border-radius: var(--lep-radius-lg) 0 0 var(--lep-radius-lg);
+				background: var(--lep-surface-2);
+				object-fit: cover;
+				box-shadow: var(--lep-shadow-lg);
+				z-index: 2;
+			}
+
+			/* ---- The metric block: the bar IS the row body. Its width encodes
+			   the metric (leader longest). Carries name + role + hero value. -- */
+			.pc-track {
+				position: relative;
+				flex: 1;
+				min-width: 0;
+				/* recessed track behind the proportional fill so the unfilled
+				   remainder still reads as "out of 100" without ticks — light
+				   enough to read as part of the row, not dead black. */
+				background: rgba(255, 255, 255, 0.08);
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+				border-radius: 0 var(--lep-radius-lg) var(--lep-radius-lg) 0;
+				overflow: hidden;
+			}
+			.pc-fill {
+				position: absolute;
+				inset: 0 auto 0 0;
+				/* width set inline (the metric proportion) */
+				background: var(--lep-data-primary);
+				border-radius: 0;
+			}
+			.pc-row--leader .pc-fill {
+				background: var(--lep-data-accent);
+			}
+
+			/* Row content sits above the fill, left-aligned with the name in the
+			   colored zone (the Kornacki layout). */
+			.pc-rowtext {
+				position: absolute;
+				inset: 0;
+				display: flex;
+				align-items: center;
+				gap: 28px;
+				padding: 0 36px;
+				z-index: 2;
+			}
+			/* On-bar halo (direction §5.13): every text element that rides INSIDE
+			   the proportional bar must stay legible when the bar is short and the
+			   text overflows onto the dark track behind it — so it can rely on
+			   NEITHER the fill color NOR the track color being behind it. White
+			   glyph + dark outline + dark shadow ring reads over both the bright
+			   amber/blue fill AND the dark track. paint-order:stroke draws the
+			   stroke beneath the glyph; the shadow ring is the fallback for engines
+			   without text-stroke. Mirrors the vendored lib's .lep-on-bar. */
+			.pc-rank,
+			.pc-name,
+			.pc-role {
+				color: var(--lep-ink-100);
+				-webkit-text-stroke: 0.75px rgba(0, 0, 0, 0.9);
+				paint-order: stroke fill;
+				text-shadow:
+					0 0 3px rgba(0, 0, 0, 0.92),
+					0 1px 4px rgba(0, 0, 0, 0.88),
+					0 0 9px rgba(0, 0, 0, 0.72);
+			}
+			.pc-rank {
+				flex: none;
+				font-family: var(--lep-font-sans);
+				font-size: var(--lep-size-subhead);
+				font-weight: var(--lep-weight-black);
+				font-variant-numeric: tabular-nums;
+				line-height: 1;
+				width: 46px;
+				text-align: center;
+			}
+			.pc-namecol {
+				flex: 1;
+				min-width: 0;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				gap: 4px;
+			}
+			.pc-name {
+				font-family: var(--lep-font-sans);
+				/* names at the data-label tier — big, just under the headline */
+				font-size: var(--lep-size-data-label);
+				font-weight: var(--lep-weight-extrabold);
+				letter-spacing: var(--lep-tracking-headline);
+				line-height: 0.96;
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.pc-role {
+				font-family: var(--lep-font-sans);
+				font-size: 28px;
+				font-weight: var(--lep-weight-bold);
+				letter-spacing: 0.04em;
+				text-transform: uppercase;
+				line-height: 1;
+				/* slightly dimmed white so it recedes under the name but still
+				   carries the on-bar halo (color set by the shared .pc-* rule). */
+				opacity: 0.88;
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			/* Value — the hero. Tabular, largest text in the row, pinned right
+			   inside the composition zone. Sits ON the track over the fill end. */
+			.pc-value {
+				position: absolute;
+				top: 50%;
+				right: 32px;
+				transform: translateY(-50%);
+				z-index: 3;
+				font-family: var(--lep-font-sans);
+				font-size: 96px;
+				font-weight: var(--lep-weight-black);
+				font-variant-numeric: tabular-nums;
+				letter-spacing: var(--lep-tracking-hero);
+				line-height: 0.9;
+				color: var(--lep-ink-100);
+				text-shadow: 0 2px 14px rgba(0, 0, 0, 0.85);
+			}
+		</style>
+	</head>
+	<body>
+		<!-- Inline content mirror — used ONLY when fetch() of content.json is
+		     blocked (the file:// render harness; some sandboxed iframes). In
+		     production the bundle is hosted over HTTP and content.json loads
+		     normally. Keep this in sync with content.json. -->
+		<script id="lep-content-inline" type="application/json">
+{
+  "kicker": "Who's Who · Sample Cabinet",
+  "headline": "Who's Running Northport",
+  "metricLabel": "Approval",
+  "metricMax": 100,
+  "people": [
+    { "id": "p1", "name": "Mara Voss", "role": "Mayor", "metric": 61, "metricDisplay": "61%" },
+    { "id": "p2", "name": "Idris Cole", "role": "Deputy Mayor", "metric": 54, "metricDisplay": "54%" },
+    { "id": "p3", "name": "Priya Anand", "role": "Budget Chief", "metric": 47, "metricDisplay": "47%" },
+    { "id": "p4", "name": "Theo Brandt", "role": "Comptroller", "metric": 39, "metricDisplay": "39%" }
+  ],
+  "source": "Illustrative sample · not real polling"
+}
+		</script>
+
+		<div class="lep-stage-wrap">
+			<div class="lep-stage">
+				<!-- background-media layer (image) + scrim mounted by helper -->
+
+				<!-- LOCKUP ZONE (top-left) -->
+				<div class="lep-lockup">
+					<span class="pc-sample-badge">Sample · Illustrative</span>
+					<p class="lep-kicker" data-bind="kicker"></p>
+					<h1 class="lep-headline" data-bind="headline"></h1>
+				</div>
+
+				<!-- THE ROSTER -->
+				<div class="pc-roster" id="roster"></div>
+
+				<!-- Attribution is METADATA, not a frame element (direction §5.14).
+				     Source lives in content.json / the manifest and is cited
+				     verbally by the presenter — it is NEVER drawn on the frame. -->
+			</div>
+		</div>
+
+		<script src="./lib/helpers.js"></script>
+		<script>
+			(async function () {
+				/* Prefer hosted content.json; fall back to the inline mirror when
+				   fetch is blocked (file:// harness / sandboxed iframe). */
+				function inlineContent() {
+					const el = document.getElementById('lep-content-inline');
+					if (!el) return null;
+					try {
+						return JSON.parse(el.textContent);
+					} catch (e) {
+						return null;
+					}
+				}
+				let manifest = {};
+				let content = null;
+				try {
+					[manifest, content] = await Promise.all([
+						leporello.loadManifest(),
+						leporello.loadContent(),
+					]);
+				} catch (e) {
+					content = inlineContent();
+					if (!content) throw e;
+				}
+				if (!content) content = inlineContent() || {};
+				leporello.applyVersionStamp(manifest || {});
+				leporello.fitStage('.lep-stage');
+
+				/* Ambient background-media layer: a quiet, low-contrast vignette so
+				   the frame reads composed rather than empty (direction §5.4). The
+				   left scrim darkens behind the lockup; the mandatory scrim is
+				   added by the helper. Self-contained inline SVG. */
+				leporello.mountBackgroundMedia({
+					image:
+						'data:image/svg+xml;utf8,' +
+						encodeURIComponent(
+							"<svg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080'>" +
+								"<defs>" +
+								"<radialGradient id='g' cx='64%' cy='32%' r='90%'>" +
+								"<stop offset='0%' stop-color='%231a2536'/>" +
+								"<stop offset='52%' stop-color='%230d141e'/>" +
+								"<stop offset='100%' stop-color='%23080b11'/>" +
+								"</radialGradient>" +
+								"</defs>" +
+								"<rect width='1920' height='1080' fill='url(%23g)'/>" +
+								"</svg>"
+						),
+					scrim: 'left',
+				});
+
+				['kicker', 'headline'].forEach((key) => {
+					const el = document.querySelector('[data-bind="' + key + '"]');
+					if (el && content[key]) el.textContent = content[key];
+				});
+
+				const rawPeople = Array.isArray(content.people)
+					? content.people
+					: [];
+				const metricLabel = content.metricLabel || '';
+				const roster = document.getElementById('roster');
+
+				/* The story is the RANKING — sort descending so the roster reads
+				   leader-first top-to-bottom and rank chips run 1..N. Keep ~4-5
+				   faces; a wall of portraits transmits nothing on air. */
+				const people = rawPeople
+					.slice()
+					.sort((a, b) => (b.metric || 0) - (a.metric || 0))
+					.slice(0, 5);
+
+				/* Bar scale: explicit metricMax, else the leader's value. */
+				const maxMetric =
+					content.metricMax != null
+						? content.metricMax
+						: people.reduce((m, p) => Math.max(m, p.metric || 0), 0) || 1;
+
+				/* ---- Deterministic duotone placeholder portrait ----------
+				   An SVG monogram silhouette from the person's initials. NEVER a
+				   fabricated real photo — clearly a graphic placeholder. Leader
+				   tile is keyed to data-accent (amber), others to data-primary,
+				   matching their metric block. */
+				function initials(name) {
+					return (name || '?')
+						.split(/\s+/)
+						.filter(Boolean)
+						.slice(0, 2)
+						.map((w) => w[0].toUpperCase())
+						.join('');
+				}
+				function duotonePortrait(person, isLeader) {
+					const accent = isLeader ? '%23ffb23f' : '%234fb3ff';
+					const deep = isLeader ? '%237a4a10' : '%23123a5e';
+					const bg = '%23121925';
+					const ini = initials(person.name);
+					const svg =
+						"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 320'>" +
+						"<defs>" +
+						"<linearGradient id='d' x1='0' y1='0' x2='0' y2='1'>" +
+						"<stop offset='0%' stop-color='" +
+						deep +
+						"'/>" +
+						"<stop offset='100%' stop-color='" +
+						bg +
+						"'/>" +
+						"</linearGradient>" +
+						"</defs>" +
+						"<rect width='320' height='320' fill='url(%23d)'/>" +
+						// recessed monogram behind the silhouette
+						"<text x='160' y='214' text-anchor='middle' font-family='Libre Franklin, Arial, sans-serif' font-weight='900' font-size='150' fill='%23ffffff' opacity='0.08'>" +
+						ini +
+						"</text>" +
+						// head + shoulders silhouette, single accent tone
+						"<circle cx='160' cy='126' r='62' fill='" +
+						accent +
+						"' opacity='0.95'/>" +
+						"<path d='M44 320c0-64 52-108 116-108s116 44 116 108z' fill='" +
+						accent +
+						"' opacity='0.95'/>" +
+						"</svg>";
+					return 'data:image/svg+xml;utf8,' + svg;
+				}
+
+				people.forEach((p, idx) => {
+					const isLeader = idx === 0;
+					const row = document.createElement('div');
+					row.className = 'pc-row' + (isLeader ? ' pc-row--leader' : '');
+
+					const img = document.createElement('img');
+					img.className = 'pc-photo';
+					img.src = duotonePortrait(p, isLeader);
+					img.alt =
+						'Illustrative placeholder portrait for ' + (p.name || '');
+					row.appendChild(img);
+
+					const track = document.createElement('div');
+					track.className = 'pc-track';
+
+					const fill = document.createElement('div');
+					fill.className = 'pc-fill';
+					const pct = Math.max(
+						0,
+						Math.min(100, ((p.metric || 0) / maxMetric) * 100)
+					);
+					/* Floor so the shortest row still reads as a filled block
+					   carrying its name; honest because all four are well above. */
+					fill.style.width = Math.max(38, pct) + '%';
+					track.appendChild(fill);
+
+					const text = document.createElement('div');
+					text.className = 'pc-rowtext';
+
+					const rank = document.createElement('div');
+					rank.className = 'pc-rank';
+					rank.textContent = String(idx + 1);
+					text.appendChild(rank);
+
+					const namecol = document.createElement('div');
+					namecol.className = 'pc-namecol';
+					if (p.name) {
+						const n = document.createElement('div');
+						n.className = 'pc-name';
+						n.textContent = p.name;
+						namecol.appendChild(n);
+					}
+					if (p.role) {
+						const r = document.createElement('div');
+						r.className = 'pc-role';
+						r.textContent =
+							p.role + (metricLabel ? ' · ' + metricLabel : '');
+						namecol.appendChild(r);
+					}
+					text.appendChild(namecol);
+					track.appendChild(text);
+
+					if (p.metric != null) {
+						const val = document.createElement('div');
+						val.className = 'pc-value';
+						val.textContent =
+							p.metricDisplay != null
+								? p.metricDisplay
+								: String(p.metric);
+						track.appendChild(val);
+					}
+
+					row.appendChild(track);
+					roster.appendChild(row);
+				});
+			})().catch((err) => {
+				console.error('[leporello-bundle] failed to bootstrap:', err);
+				document.body.innerHTML =
+					'<pre style="color:#f87171;padding:24px;font-family:monospace">' +
+					'Bundle failed to load: ' +
+					String(err && err.message ? err.message : err) +
+					'</pre>';
+			});
+		</script>
+	</body>
+</html>

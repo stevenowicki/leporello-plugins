@@ -1,0 +1,19 @@
+{
+  "eyebrow": "Sample Data · Illustrative",
+  "headline": "Renewables now power most of the grid",
+  "stat": {
+    "value": "68%",
+    "label": "of the sample regional grid ran on renewables last quarter"
+  },
+  "comparison": {
+    "value": "+14 pts",
+    "label": "vs. year ago"
+  },
+  "context": "Up from just over half a year earlier — the fastest single-year shift on record for this illustrative dataset.",
+  "background": {
+    "image": "./lib/bg-relief.svg",
+    "scrim": "left"
+  },
+  "source": "Sample dataset · illustrative figures, not real measurements",
+  "sourceRefs": []
+}

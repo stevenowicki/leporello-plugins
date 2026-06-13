@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Leporello timeline bundle</title>
+		<link rel="stylesheet" href="./lib/tokens.css" />
+		<link rel="stylesheet" href="./lib/base.css" />
+		<style>
+			/* =================================================================
+			   TIMELINE — v1 DLS restyle (LEPO-37 fix, M2 critique pass 4).
+			   The shipped horizontal template crammed many small cards along a
+			   thin axis; the type fell below the broadcast floor and progression
+			   was hard to read at distance. Pass-2 went vertical but the TITLE —
+			   the actual content of each beat — ran at the 40px floor while the
+			   date dominated. Pass-3 promoted the title to a 56px hero in
+			   full-width bands, but on-air review found the bands BUNCHY (meta
+			   line and title too tight, content butting against the rules) and
+			   the gold "current" highlight NOT aligned to the hairline dividers.
+
+			   THIS PASS (4):
+			   - Each beat OWNS an equal vertical slot (flex:1) so the rhythm is
+			     even top-to-bottom; content is vertically centered inside its
+			     slot with generous symmetric padding, opening up the spacing so
+			     the timeline breathes.
+			   - The hairline rule is the beat's own bottom border; because each
+			     slot is equal and the content is centered, the rules land on a
+			     regular grid.
+			   - The gold "current" highlight now spans its slot EXACTLY from the
+			     divider above to the divider below (inset:0 of the padding box,
+			     which sits between the previous beat's bottom border and this
+			     beat's own bottom border) — so the wash and its accent edge line
+			     up precisely with the hairlines, not floating arbitrary offsets.
+			   - The on-frame source strip is removed (direction §5.14 — source is
+			     metadata, cited verbally; the re-vendored lib also hard-kills it).
+
+			   Hierarchy: the headline (84px) is the single largest element — the
+			   frame's center of gravity. Per beat, the title (56px) is the hero;
+			   the date meta line (34px) is its label.
+
+			   All authoring is px on the 1920x1080 stage (helpers.fitStage()).
+			   Critical content stays left of x1574 (the composition zone). The
+			   ambient background runs full-bleed.
+			   ================================================================= */
+
+			/* base.css positions .lep-lockup / .lep-source / .tl-stage absolutely,
+			   but its `.lep-stage > :not(.lep-bg-media)` reset (which gives authored
+			   content its stacking context) has higher specificity and forces them
+			   back to position:relative. Re-assert absolute at matching specificity. */
+			.lep-stage > .lep-lockup,
+			.lep-stage > .lep-source {
+				position: absolute;
+			}
+
+			/* Bring the headline up to the true 84px floor as ONE clear hero, and
+			   let it wrap to two lines without clipping. The lockup is the frame's
+			   center of gravity; everything below is the supporting beat list. */
+			.lep-stage > .lep-lockup .lep-headline {
+				max-width: 1320px;
+			}
+
+			.lep-stage > .tl-stage {
+				position: absolute;
+				left: var(--lep-title-safe-inset);   /* 90px */
+				top: 392px;
+				/* Span the composition zone: from the title-safe inset out to
+				   ~x1500 (well inside the x1574 presenter edge). The full-width
+				   bands fill this whole width by design — the fix for the
+				   stranded-at-55% / dead-right-third failure. */
+				right: calc(var(--lep-stage-w) - var(--lep-comp-zone-w) + var(--lep-title-safe-inset) - 16px);
+				bottom: 52px;
+			}
+
+			.tl-beats {
+				position: absolute;
+				inset: 0;
+				display: flex;
+				flex-direction: column;
+			}
+
+			/* One event = a full-width BAND that owns an EQUAL vertical slot.
+			   flex:1 divides the stage height evenly so the rhythm is regular
+			   top-to-bottom; content is vertically centered in its slot and the
+			   hairline rule (bottom border) therefore lands on a regular grid.
+			   The symmetric padding opens the spacing so the timeline breathes. */
+			.tl-beat {
+				position: relative;
+				flex: 1 1 0;
+				min-height: 0;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				gap: 14px;
+				padding: 6px 0;
+				border-bottom: 2px solid rgba(255, 255, 255, 0.14);
+			}
+			/* Last band drops the rule (nothing follows it). */
+			.tl-beat:last-child {
+				border-bottom: none;
+			}
+
+			/* Meta line — the "when" label: dot + month + accent-tinted year,
+			   compact ALL-CAPS so the eye reads the progression down the left and
+			   the title below stays the hero. */
+			.tl-meta {
+				display: flex;
+				align-items: center;
+				gap: 22px;
+			}
+
+			.tl-dot {
+				width: 32px;
+				height: 32px;
+				border-radius: var(--lep-radius-full);
+				flex: none;
+				background: var(--lep-data-primary);
+				box-shadow:
+					0 0 0 6px rgba(79, 179, 255, 0.16),
+					0 0 18px rgba(79, 179, 255, 0.5);
+			}
+
+			/* Date — the per-beat anchor for "when". Kicker/legend tier (34px),
+			   tabular, ALL CAPS, heavy. The year is tinted with the story color
+			   so the progression reads top-to-bottom at a glance. */
+			.tl-date {
+				font-size: var(--lep-size-legend); /* 34px */
+				font-weight: var(--lep-weight-extrabold);
+				letter-spacing: 0.08em;
+				line-height: 1;
+				text-transform: uppercase;
+				color: var(--lep-ink-muted);
+				font-variant-numeric: tabular-nums;
+				white-space: nowrap;
+				text-shadow: 0 2px 12px rgba(0, 0, 0, 0.78);
+			}
+			.tl-date .tl-year {
+				color: var(--lep-data-primary);
+			}
+
+			/* Event title — THE hero of each beat. 56px (between subhead 40 and
+			   data-label 64), ink-100, bold, runs the full band width and wraps
+			   to two lines without clipping. This is the readability fix: the
+			   description, not the date, is the content the viewer must read. */
+			.tl-title {
+				font-size: 56px;
+				font-weight: var(--lep-weight-bold);
+				line-height: 1.08;
+				letter-spacing: var(--lep-tracking-headline);
+				color: var(--lep-ink-100);
+				margin: 0;
+				max-width: 1360px;
+				display: -webkit-box;
+				-webkit-box-orient: vertical;
+				-webkit-line-clamp: 2;
+				line-clamp: 2;
+				overflow: hidden;
+				text-shadow: 0 2px 14px rgba(0, 0, 0, 0.82);
+			}
+
+			/* The single accent beat — broadcast-safe orange, larger presence.
+			   The accent band gets a faint warm wash + accent edge so the
+			   "current" beat reads as the one that matters. */
+			.tl-beat[data-accent='true'] {
+				border-bottom-color: rgba(255, 178, 63, 0.5);
+			}
+			/* Warm wash + accent edge on the "current" band. CRITICAL: the wash
+			   must align EXACTLY to the hairline dividers above and below. Each
+			   beat owns an equal slot whose box runs divider-to-divider (the top
+			   edge sits on the previous beat's bottom border; the bottom edge IS
+			   this beat's own bottom border), so `top:0; bottom:0` makes the wash
+			   span precisely between the two rules — no floating offsets. The
+			   left accent edge runs the full slot height for the same reason. */
+			.tl-beat[data-accent='true']::before {
+				content: '';
+				position: absolute;
+				left: -28px;
+				right: -40px;
+				top: 0;
+				bottom: 0;
+				z-index: -1;
+				background: linear-gradient(
+					90deg,
+					rgba(255, 178, 63, 0.17) 0%,
+					rgba(255, 178, 63, 0.08) 46%,
+					rgba(255, 178, 63, 0) 78%
+				);
+				border-left: 6px solid var(--lep-data-accent);
+			}
+			.tl-beat[data-accent='true'] .tl-dot {
+				background: var(--lep-data-accent);
+				box-shadow:
+					0 0 0 7px rgba(255, 178, 63, 0.2),
+					0 0 22px rgba(255, 178, 63, 0.6);
+				transform: scale(1.18);
+			}
+			.tl-beat[data-accent='true'] .tl-date {
+				color: var(--lep-ink-200);
+			}
+			.tl-beat[data-accent='true'] .tl-date .tl-year {
+				color: var(--lep-data-accent);
+			}
+			.tl-beat[data-accent='true'] .tl-title {
+				color: var(--lep-ink-100);
+				font-weight: var(--lep-weight-extrabold);
+			}
+		</style>
+	</head>
+	<body>
+		<div class="lep-stage-wrap">
+			<div class="lep-stage">
+				<!-- Background-media layer (ambient, full-bleed) is inserted by
+				     helpers.mountBackgroundMedia() as the first child. -->
+
+				<!-- ============ LOCKUP ZONE (top-left) ============ -->
+				<div class="lep-lockup">
+					<p class="lep-kicker" data-bind="eyebrow"></p>
+					<h1 class="lep-headline" data-bind="headline"></h1>
+					<p class="lep-subhead" data-bind="subhead" style="max-width: 1120px"></p>
+				</div>
+
+				<!-- ============ TIMELINE BEATS (primary stage, left) ============ -->
+				<div class="tl-stage">
+					<div class="tl-beats" id="tl-beats"></div>
+				</div>
+
+				<!-- No on-frame source strip: attribution is metadata, cited
+				     verbally by the presenter (direction §5.14). The `source`
+				     field in content.json is retained as metadata only. -->
+			</div>
+		</div>
+
+		<!-- Inline copies of manifest + content. The on-air app serves this bundle
+		     over HTTP and content.json / manifest.json are authoritative there;
+		     these inline fallbacks let the bundle also render standalone over
+		     file:// (the M1 render harness), where fetch() of sibling files is
+		     blocked by the browser's file-origin policy. Keep them in sync with
+		     the JSON files (content.json is the source of truth). -->
+		<script type="application/json" id="tl-inline-manifest">
+		{ "version": 1, "createdAt": "2026-06-08T00:00:00Z", "editorialReview": null }
+		</script>
+		<script type="application/json" id="tl-inline-content">
+		{
+		  "eyebrow": "Sample Timeline",
+		  "headline": "How the project came together",
+		  "subhead": "Five sample milestones — illustrative content only.",
+		  "dateMode": "month",
+		  "dateRange": { "start": "2024-02-01", "end": "2026-05-01" },
+		  "source": "Illustrative sample data",
+		  "background": { "image": "./lib/timeline-bg.png" },
+		  "events": [
+		    { "date": "2024-02-15", "title": "Idea sketched on a whiteboard", "accent": false },
+		    { "date": "2024-09-10", "title": "First working prototype demonstrated to the team", "accent": false },
+		    { "date": "2025-04-22", "title": "Public preview opens to a first wave of early testers", "accent": true },
+		    { "date": "2025-11-05", "title": "Team grows to twelve people", "accent": false },
+		    { "date": "2026-05-01", "title": "Version one ships to everyone", "accent": false }
+		  ]
+		}
+		</script>
+		<script src="./lib/helpers.js"></script>
+		<script>
+			// Prefer the fetched JSON (authoritative on air); fall back to the
+			// inline copy when fetch fails (standalone file:// render).
+			function inlineJSON(id) {
+				const el = document.getElementById(id);
+				if (!el) return null;
+				try {
+					return JSON.parse(el.textContent);
+				} catch (e) {
+					return null;
+				}
+			}
+			async function loadWithFallback(loader, inlineId) {
+				try {
+					return await loader();
+				} catch (e) {
+					const fb = inlineJSON(inlineId);
+					if (fb) return fb;
+					throw e;
+				}
+			}
+
+			(async function () {
+				const [manifest, content] = await Promise.all([
+					loadWithFallback(leporello.loadManifest, 'tl-inline-manifest'),
+					loadWithFallback(leporello.loadContent, 'tl-inline-content'),
+				]);
+
+				leporello.applyVersionStamp(manifest);
+
+				// Ambient background-media layer (image) + mandatory scrim.
+				// Left-weighted scrim keeps the lockup + spine legible while the
+				// right field (otherwise dead space) stays visible.
+				leporello.mountBackgroundMedia({
+					image:
+						(content.background && content.background.image) ||
+						'./lib/timeline-bg.png',
+					scrim: 'left',
+				});
+
+				leporello.fitStage('.lep-stage');
+
+				// Bind the lockup text.
+				['eyebrow', 'headline', 'subhead'].forEach((key) => {
+					const el = document.querySelector('[data-bind="' + key + '"]');
+					if (el && content[key]) el.textContent = content[key];
+				});
+
+				// Date formatting: "MON YYYY" or "MON D, YYYY" with the year tinted
+				// as the story color. The year carries the progression downward.
+				const fmt = (iso, mode) => {
+					const d = new Date(iso);
+					if (isNaN(d.getTime())) return { lead: String(iso), year: '' };
+					const month = d.toLocaleDateString('en-US', {
+						month: 'short',
+						timeZone: 'UTC',
+					});
+					const day = d.getUTCDate();
+					const year = d.getUTCFullYear();
+					if (mode === 'day')
+						return { lead: month + ' ' + day, year: ' ' + year };
+					return { lead: month, year: ' ' + year };
+				};
+
+				const events = Array.isArray(content.events)
+					? content.events.slice()
+					: [];
+				// Defensive: sort chronologically and cap at 5 beats (broadcast
+				// readability floor — more than this and the viewer can't track it).
+				events.sort((a, b) => new Date(a.date) - new Date(b.date));
+				const MAX_BEATS = 5;
+				const shown = events.slice(0, MAX_BEATS);
+
+				const dateMode = content.dateMode === 'day' ? 'day' : 'month';
+
+				const beatsEl = document.getElementById('tl-beats');
+				shown.forEach((ev) => {
+					const beat = document.createElement('div');
+					beat.className = 'tl-beat';
+					if (ev.accent) beat.dataset.accent = 'true';
+
+					// Each beat is a full-width band: a compact meta line
+					// (dot + date) over a large title hero on its own line, so
+					// the title can run the full composition-zone width and read
+					// at distance.
+					const meta = document.createElement('div');
+					meta.className = 'tl-meta';
+
+					const dot = document.createElement('div');
+					dot.className = 'tl-dot';
+					meta.appendChild(dot);
+
+					const dateEl = document.createElement('div');
+					dateEl.className = 'tl-date';
+					const f = fmt(ev.date, dateMode);
+					dateEl.append(document.createTextNode(f.lead));
+					const yr = document.createElement('span');
+					yr.className = 'tl-year';
+					yr.textContent = f.year;
+					dateEl.appendChild(yr);
+					meta.appendChild(dateEl);
+
+					beat.appendChild(meta);
+
+					const titleEl = document.createElement('div');
+					titleEl.className = 'tl-title';
+					titleEl.textContent = ev.title || '';
+					beat.appendChild(titleEl);
+
+					beatsEl.appendChild(beat);
+				});
+
+				// No on-frame source strip (direction §5.14). content.source is
+				// kept as metadata only and is intentionally NOT drawn.
+			})().catch((err) => {
+				console.error('[leporello-bundle] failed to bootstrap:', err);
+				document.body.innerHTML =
+					'<pre style="color:#f87171;padding:24px;font-family:monospace">' +
+					'Bundle failed to load: ' +
+					String(err && err.message ? err.message : err) +
+					'</pre>';
+			});
+		</script>
+	</body>
+</html>

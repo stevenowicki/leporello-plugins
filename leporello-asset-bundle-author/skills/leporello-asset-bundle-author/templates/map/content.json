@@ -1,0 +1,64 @@
+{
+  "_comment": "SAMPLE CONTENT — clearly illustrative 'demo geography', not a claim about any real coastline. All labels + markers are GEO-ANCHORED (lng/lat) so they pan/zoom with the live map — replace the lngLat values + the live regions/camera/basemap with real values when authoring. The map renders full-bleed at true viewport size (NO fitStage / CSS scale on the map), so MapLibre's projection math stays correct and telestration strokes anchor exactly.",
+
+  "eyebrow": "Maritime Chokepoint",
+  "headline": "The Narrows",
+  "subhead": "A fifth of seaborne trade funnels through one strait.",
+
+  "basemap": {
+    "comment": "Default is CARTO Dark Matter — a keyless, worldwide vector dark style that matches the on-air 'Dark' basemap preset and reads as a broadcast basemap at all zooms. Swap styleUrl for a MapTiler dark style (inline an origin-restricted key) for a richer surface, e.g. https://api.maptiler.com/maps/dataviz-dark/style.json?key=YOUR_KEY",
+    "styleUrl": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+  },
+
+  "camera": {
+    "comment": "Prefer `bounds` ([[west,south],[east,north]]) so the frame fits the area of interest on any wall; `center`/`zoom` are the fallback when no bounds are given.",
+    "bounds": [[54.8, 25.2], [58.0, 27.4]],
+    "fitPadding": 80,
+    "center": [56.3, 26.4],
+    "zoom": 6.4,
+    "pitch": 0,
+    "bearing": 0
+  },
+
+  "_labelComment": "lngLat anchors the geo marker on the LIVE map (the on-air render). x/y (in the 1920x1080 reference field) position the SAME label over the static SVG fallback so the OFFLINE render (and the headless harness, which can't composite live WebGL) is never blank — mirrors iran-alignment.",
+
+  "featuredLabels": [
+    { "text": "The Narrows", "lngLat": [56.45, 26.55], "x": 1080, "y": 548, "pill": true, "primary": true },
+    { "text": "North Port", "lngLat": [56.27, 27.15], "x": 1030, "y": 430, "dot": true }
+  ],
+
+  "orientationLabels": [
+    { "text": "NORTHLAND", "lngLat": [56.6, 27.25], "x": 660, "y": 250 },
+    { "text": "SOUTHCOAST", "lngLat": [56.2, 25.5], "x": 700, "y": 880 },
+    { "text": "Inner Sea", "lngLat": [55.3, 26.6], "x": 380, "y": 560, "sea": true },
+    { "text": "Open Gulf", "lngLat": [57.4, 25.6], "x": 1560, "y": 600, "sea": true },
+    { "text": "West Harbor", "lngLat": [55.5, 26.9], "x": 470, "y": 470, "dot": true },
+    { "text": "South Quay", "lngLat": [57.0, 26.0], "x": 1360, "y": 700, "dot": true },
+    { "text": "Headland", "lngLat": [56.7, 26.3], "x": 1240, "y": 410, "dot": true }
+  ],
+
+  "regions": [
+    {
+      "id": "approach",
+      "label": "Shipping approach",
+      "color": "#4fb3ff",
+      "comment": "SAMPLE GEOMETRY — replace with real GeoJSON ([lng, lat] rings).",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[55.7, 26.1], [57.2, 26.1], [57.2, 26.9], [55.7, 26.9], [55.7, 26.1]]
+        ]
+      }
+    }
+  ],
+
+  "legend": {
+    "rows": [
+      { "label": "Shipping lane", "color": "rgba(150,215,255,0.92)" },
+      { "label": "Key port", "color": "#ffb23f" }
+    ]
+  },
+
+  "source": "Demo geography · not to scale",
+  "sourceRefs": []
+}

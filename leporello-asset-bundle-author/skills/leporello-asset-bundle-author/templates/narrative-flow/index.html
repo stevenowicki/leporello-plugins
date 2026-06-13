@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Leporello narrative-flow bundle</title>
+		<link rel="stylesheet" href="./lib/tokens.css" />
+		<link rel="stylesheet" href="./lib/base.css" />
+		<style>
+			/* =================================================================
+			   narrative-flow (v1 DLS / LEPO-38 rebuild)
+
+			   The old template crammed every step into a single row of small
+			   equal-width cards (28px titles, 22px body) — the anti-broadcast
+			   failure mode. The rebuild treats EACH step as its own clean
+			   broadcast frame: one idea, big type, readable in <3 seconds. The
+			   presenter advances step-by-step (tap the stage or a progress pip);
+			   the active step owns the composition zone, the rest recede into a
+			   first-class progress rail bottom-left.
+
+			   Critical content stays left of x1574 (composition zone). The
+			   ambient backdrop runs full-bleed behind the presenter column.
+			   ================================================================= */
+
+			/* The active step's content block — lives in the lockup + primary
+			   stage, left-weighted, inside the composition zone. Occupies the
+			   UPPER band; the progress rail owns the lower band. They never
+			   overlap vertically. */
+			.lep-stage > .flow-frame {
+				position: absolute;
+				left: var(--lep-title-safe-inset);
+				top: var(--lep-title-safe-inset-y);
+				width: 1300px; /* inside the 1574 comp zone w/ title-safe inset */
+				max-width: calc(var(--lep-comp-zone-w) - var(--lep-title-safe-inset) * 2);
+				transition:
+					opacity var(--lep-duration-med) var(--lep-ease-out),
+					transform var(--lep-duration-med) var(--lep-ease-out);
+			}
+			.flow-frame.is-swapping {
+				opacity: 0;
+				transform: translateY(18px);
+			}
+
+			/* Kicker + step counter share the eyebrow line. */
+			.flow-eyebrow {
+				display: flex;
+				align-items: baseline;
+				gap: 24px;
+			}
+			.flow-counter {
+				font-size: var(--lep-size-kicker);
+				font-weight: var(--lep-weight-bold);
+				letter-spacing: var(--lep-tracking-kicker);
+				color: var(--lep-ink-muted);
+				font-variant-numeric: tabular-nums;
+			}
+
+			/* The giant step number — the asset's hero figure (direction §5.5).
+			   Sits to the left of the step title as a dominant index. One per
+			   frame, so it earns the hero-number tier. */
+			.flow-body {
+				display: grid;
+				grid-template-columns: auto 1fr;
+				align-items: start;
+				column-gap: 56px;
+				margin-top: 44px;
+			}
+			.flow-number {
+				font-size: 248px; /* lone-number hero per §2 (>=150, up to 200+) */
+				font-weight: var(--lep-weight-black);
+				line-height: 0.82;
+				letter-spacing: var(--lep-tracking-hero);
+				color: var(--lep-data-primary);
+				font-variant-numeric: tabular-nums;
+				text-shadow: 0 6px 40px rgba(0, 0, 0, 0.55);
+			}
+			.flow-frame[data-accent='true'] .flow-number {
+				color: var(--lep-data-accent);
+			}
+
+			.flow-text {
+				padding-top: 18px;
+			}
+			.flow-title {
+				font-size: var(--lep-size-headline);
+				font-weight: var(--lep-weight-extrabold);
+				line-height: var(--lep-leading-snug);
+				letter-spacing: var(--lep-tracking-headline);
+				color: var(--lep-ink-100);
+				margin: 0;
+				text-shadow: 0 3px 22px rgba(0, 0, 0, 0.6);
+			}
+			.flow-desc {
+				font-size: var(--lep-size-subhead);
+				font-weight: var(--lep-weight-regular);
+				line-height: var(--lep-leading-normal);
+				color: var(--lep-ink-200);
+				margin: 30px 0 0 0;
+				max-width: 880px;
+				text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
+			}
+
+			/* =================================================================
+			   PROGRESS RAIL — bottom-left, the first-class legend-tier component.
+			   One pip per step: index + short label, the active one lit. A
+			   proportional fill bar encodes "where we are" in the flow (the eye
+			   gets position before reading). Inactive steps recede so the active
+			   frame wins the contrast fight.
+			   ================================================================= */
+			.lep-stage > .flow-rail {
+				position: absolute;
+				left: var(--lep-title-safe-inset);
+				bottom: var(--lep-space-5);
+				display: flex;
+				flex-direction: column;
+				gap: 12px;
+				background: var(--lep-overlay-legend);
+				padding: 22px 30px 22px 26px;
+				border-radius: var(--lep-radius-lg);
+				border: 1px solid rgba(255, 255, 255, 0.08);
+				backdrop-filter: blur(3px);
+				max-width: 1300px;
+			}
+			.flow-rail-head {
+				font-size: 22px;
+				font-weight: var(--lep-weight-bold);
+				letter-spacing: 0.12em;
+				text-transform: uppercase;
+				color: var(--lep-ink-muted);
+				margin-bottom: 6px;
+			}
+			.flow-pips {
+				display: flex;
+				gap: 14px;
+			}
+			.flow-pip {
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				padding: 10px 22px 10px 16px;
+				border-radius: var(--lep-radius-full);
+				background: rgba(255, 255, 255, 0.05);
+				border: 1.5px solid rgba(255, 255, 255, 0.1);
+				cursor: pointer;
+				touch-action: manipulation;
+				user-select: none;
+				-webkit-tap-highlight-color: transparent;
+				transition:
+					background var(--lep-duration-fast) var(--lep-ease-out),
+					border-color var(--lep-duration-fast) var(--lep-ease-out),
+					opacity var(--lep-duration-fast) var(--lep-ease-out);
+				opacity: 0.5;
+			}
+			.flow-pip-num {
+				font-size: 30px;
+				font-weight: var(--lep-weight-black);
+				line-height: 1;
+				font-variant-numeric: tabular-nums;
+				color: var(--lep-ink-muted);
+			}
+			.flow-pip-title {
+				font-size: var(--lep-size-legend);
+				font-weight: var(--lep-weight-semibold);
+				letter-spacing: var(--lep-tracking-legend);
+				color: var(--lep-ink-200);
+				white-space: nowrap;
+			}
+			/* Active pip — lit, full opacity, story color. */
+			.flow-pip.is-active {
+				opacity: 1;
+				background: rgba(79, 179, 255, 0.16);
+				border-color: rgba(79, 179, 255, 0.55);
+			}
+			.flow-pip.is-active .flow-pip-num {
+				color: var(--lep-data-primary);
+			}
+			.flow-pip.is-active .flow-pip-title {
+				color: var(--lep-ink-100);
+			}
+			/* If the active step is the editorial accent, swap to the accent color. */
+			.flow-pip.is-active.is-accent {
+				background: rgba(255, 178, 63, 0.16);
+				border-color: rgba(255, 178, 63, 0.6);
+			}
+			.flow-pip.is-active.is-accent .flow-pip-num {
+				color: var(--lep-data-accent);
+			}
+			@media (hover: hover) {
+				.flow-pip:hover {
+					opacity: 0.82;
+				}
+			}
+
+			/* Position-in-flow fill bar under the pips. */
+			.flow-progress {
+				position: relative;
+				height: 8px;
+				margin-top: 18px;
+				border-radius: var(--lep-radius-full);
+				background: rgba(255, 255, 255, 0.08);
+				overflow: hidden;
+			}
+			.flow-progress-fill {
+				position: absolute;
+				inset: 0 auto 0 0;
+				border-radius: var(--lep-radius-full);
+				background: var(--lep-data-primary);
+				transition: width var(--lep-duration-slow) var(--lep-ease-inout);
+			}
+			.flow-rail.is-accent .flow-progress-fill {
+				background: var(--lep-data-accent);
+			}
+
+		</style>
+	</head>
+	<body>
+		<div class="lep-stage-wrap">
+			<div class="lep-stage">
+				<!-- Ambient background-media layer mounted by JS
+				     (helpers.mountBackgroundMedia) so the §5.4 scrim is applied. -->
+
+				<!-- The active step frame (lockup + primary stage). -->
+				<div class="flow-frame" id="flow-frame">
+					<div class="flow-eyebrow">
+						<div class="lep-kicker" data-bind="eyebrow" style="margin: 0"></div>
+						<div class="flow-counter" id="flow-counter"></div>
+					</div>
+					<div class="flow-body">
+						<div class="flow-number" id="flow-number"></div>
+						<div class="flow-text">
+							<h1 class="flow-title" id="flow-title"></h1>
+							<p class="flow-desc" id="flow-desc"></p>
+						</div>
+					</div>
+				</div>
+
+				<!-- Progress rail (legend zone). Pips built by JS. -->
+				<div class="flow-rail" id="flow-rail" hidden>
+					<div class="flow-rail-head" data-bind="headline"></div>
+					<div class="flow-pips" id="flow-pips"></div>
+					<div class="flow-progress">
+						<div class="flow-progress-fill" id="flow-progress-fill"></div>
+					</div>
+				</div>
+
+			</div>
+		</div>
+
+		<script src="./lib/helpers.js"></script>
+		<script>
+			(async function () {
+				const [manifest, content] = await Promise.all([
+					leporello.loadManifest(),
+					leporello.loadContent(),
+				]);
+
+				leporello.applyVersionStamp(manifest);
+				leporello.fitStage('.lep-stage');
+
+				// Ambient backdrop — kills the dead right field; scrim mandatory.
+				leporello.mountBackgroundMedia({
+					stage: '.lep-stage',
+					image: './static/backdrop.svg',
+					scrim: 'left',
+				});
+
+				const steps = Array.isArray(content.steps) ? content.steps : [];
+
+				// Bind static text (eyebrow/kicker + rail head = flow headline).
+				document.querySelectorAll('[data-bind]').forEach((el) => {
+					const key = el.getAttribute('data-bind');
+					if (content[key]) el.textContent = content[key];
+				});
+
+
+				const frameEl = document.getElementById('flow-frame');
+				const numEl = document.getElementById('flow-number');
+				const titleEl = document.getElementById('flow-title');
+				const descEl = document.getElementById('flow-desc');
+				const counterEl = document.getElementById('flow-counter');
+				const pipsEl = document.getElementById('flow-pips');
+				const fillEl = document.getElementById('flow-progress-fill');
+				const railEl = document.getElementById('flow-rail');
+
+				// Which step starts active: the editorial accent, else the first.
+				let active = steps.findIndex((s) => s.accent);
+				if (active < 0) active = 0;
+
+				function stepNumber(idx) {
+					return String(steps[idx].number ?? idx + 1).padStart(2, '0');
+				}
+
+				// Build the progress rail once.
+				railEl.hidden = steps.length === 0;
+				steps.forEach((step, idx) => {
+					const pip = document.createElement('div');
+					pip.className = 'flow-pip';
+					pip.dataset.idx = String(idx);
+
+					const num = document.createElement('span');
+					num.className = 'flow-pip-num';
+					num.textContent = stepNumber(idx);
+					pip.appendChild(num);
+
+					const title = document.createElement('span');
+					title.className = 'flow-pip-title';
+					// Rail uses a short label if provided, else the step title.
+					title.textContent = step.railLabel || step.title || '';
+					pip.appendChild(title);
+
+					pip.addEventListener('click', () => goTo(idx));
+					pipsEl.appendChild(pip);
+				});
+
+				function renderActive() {
+					const step = steps[active];
+					if (!step) return;
+
+					numEl.textContent = stepNumber(active);
+					titleEl.textContent = step.title || '';
+					descEl.textContent = step.description || '';
+					counterEl.textContent =
+						'Step ' + (active + 1) + ' of ' + steps.length;
+
+					// Accent flag drives the number + progress color. Use the
+					// string value 'true' so the [data-accent='true'] selector
+					// matches (toggleAttribute would set an empty string).
+					const isAccent = !!step.accent;
+					if (isAccent) frameEl.setAttribute('data-accent', 'true');
+					else frameEl.removeAttribute('data-accent');
+					railEl.classList.toggle('is-accent', isAccent);
+
+					// Pip states.
+					Array.from(pipsEl.children).forEach((pip, idx) => {
+						const a = idx === active;
+						pip.classList.toggle('is-active', a);
+						pip.classList.toggle('is-accent', a && !!steps[idx].accent);
+					});
+
+					// Position fill: how far through the flow we are.
+					const pct =
+						steps.length > 1 ? (active / (steps.length - 1)) * 100 : 100;
+					fillEl.style.width = pct + '%';
+				}
+
+				function goTo(idx) {
+					if (idx === active || idx < 0 || idx >= steps.length) return;
+					frameEl.classList.add('is-swapping');
+					let done = false;
+					const after = () => {
+						if (done) return;
+						done = true;
+						active = idx;
+						renderActive();
+						void frameEl.offsetWidth; // reflow so it animates back in
+						frameEl.classList.remove('is-swapping');
+					};
+					frameEl.addEventListener('transitionend', after, { once: true });
+					// transitionend can be flaky under headless; timed fallback.
+					setTimeout(after, 280);
+				}
+
+				// Tapping the stage (outside the rail) advances + loops — the
+				// presenter walks the flow with a single tap zone.
+				document
+					.querySelector('.lep-stage')
+					.addEventListener('click', (e) => {
+						if (e.target.closest('.flow-rail')) return;
+						goTo((active + 1) % steps.length);
+					});
+
+				renderActive();
+			})().catch((err) => {
+				console.error('[leporello-bundle] failed to bootstrap:', err);
+				document.body.innerHTML =
+					'<pre style="color:#f87171;padding:24px;font-family:monospace">' +
+					'Bundle failed to load: ' +
+					String(err && err.message ? err.message : err) +
+					'</pre>';
+			});
+		</script>
+	</body>
+</html>

@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Leporello map bundle — v1 DLS (M2)</title>
+
+		<!-- MapLibre GL JS — matches the on-air app's pinned version. The live
+		     map renders FULL-BLEED at true viewport size (no CSS scale), so its
+		     projection math is correct and telestration strokes anchor exactly. -->
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+
+		<link rel="stylesheet" href="./lib/tokens.css" />
+		<link rel="stylesheet" href="./lib/base.css" />
+		<style>
+			/* =================================================================
+			   MAP TEMPLATE — v1 DLS (M2), REBUILT
+
+			   THE FIX (vs the prior M2 map):
+			   The live MapLibre map is now FULL-BLEED at native viewport size —
+			   it is NOT wrapped in `.lep-stage` / `leporello.fitStage()`, so
+			   there is NO `transform: scale()` ancestor over it. A CSS scale
+			   breaks MapLibre's pixel<->lng/lat math: markers stop tracking the
+			   map on pan/zoom, and telestration strokes (which the on-air parent
+			   sends in TRUE viewport px) unproject wrong and jump on commit.
+
+			   Architecture (matches the canonical skill map template):
+			     1. `#map` — the live MapLibre map, position:fixed full-bleed,
+			        z-index 0. The map owns its own pan/zoom and the projection.
+			        `window.leporelloMap` is exposed for the on-air telestrator
+			        (manifest telestrator: "map").
+			     2. ALL place-labels (featured + orientation) are geo-anchored
+			        `maplibregl.Marker`s (lng/lat) — they pan/zoom WITH the map.
+			        Their DOM is DLS-styled (featured pill/dot/halo; orientation
+			        recessed) so the M1 Hormuz look is preserved.
+			     3. DLS CHROME (lockup top-left, legend bottom-left, scrims) IS
+			        authored on a 1920x1080 `.lep-chrome-stage` scaled by fitStage
+			        so the DLS type lands at exact reference px on any wall — but
+			        that scaled stage does NOT contain the map. It's a
+			        pointer-events:none overlay above the map; only the legend
+			        re-enables pointer events locally.
+			     4. The frame is HIDDEN (opacity 0) until the map fires `load`
+			        AND the post-fit `idle`, so there's no basemap load flash.
+			     5. NO on-frame source/attribution strip (direction §5.14) —
+			        attribution stays in the manifest metadata only.
+			   ================================================================= */
+
+			html, body { margin: 0; height: 100%; background: var(--lep-surface-0); }
+
+			/* The live MapLibre map: full-bleed, true viewport px, NO transform
+			   ancestor. This is the load-bearing fix. */
+			#map {
+				position: fixed;
+				inset: 0;
+				z-index: 0;
+				background: var(--lep-surface-0);
+			}
+
+			/* Static SVG fallback basemap — the safety net that renders ONLY if the
+			   live tiles fail to load (offline / blocked / map error). Fixed
+			   full-bleed UNDER the live map. CRITICAL: it starts HIDDEN
+			   (display:none) and is revealed (.is-shown) ONLY on a live-map failure
+			   path — so on the normal path the viewer NEVER sees the giant
+			   smooth-blob static choropleth flash before the live map resolves.
+			   Mirrors the blob-flash fix in iran-alignment. */
+			#static-map {
+				position: fixed;
+				inset: 0;
+				z-index: 0;
+				background: var(--lep-surface-0);
+				display: none;
+			}
+			#static-map.is-shown { display: block; }
+			#static-map svg { display: block; width: 100%; height: 100%; }
+
+			/* The DLS chrome unit: 1 reference-px on the 1920x1080 canvas, scaled
+			   to the viewport (contain) WITHOUT a transform — matching the working
+			   iran-alignment template. `--u = min(vw/1920, vh/1080)`. Set as a CSS
+			   fallback and kept current by a tiny resize handler in JS. Chrome is
+			   sized in reference-px × var(--u), NOT by a transform: scale() on a
+			   centered box — so the lockup/legend/scrims anchor to the VIEWPORT's
+			   own edges (no centering, no left gap, content left-anchored). */
+			:root { --u: min(calc(100vw / 1920), calc(100vh / 1080)); }
+
+			/* =================================================================
+			   REVEAL GATE — per-element via body[data-ready], NEVER whole-body
+			   opacity. A WebGL <canvas> under an ancestor `opacity` (or
+			   `filter`/`transform`) transition drops to BLACK in Chromium while
+			   sibling HTML chrome still paints — the exact black-map symptom this
+			   template hit. So we gate each piece individually and put the
+			   transition ONLY on the chrome + scrims, never on an ancestor of the
+			   #map canvas. (Matches iran-alignment's working data-ready pattern.)
+			   The #map itself is NOT opacity-gated — it paints immediately; the
+			   static fallback sits beneath it until tiles arrive. */
+			body:not([data-ready]) .lep-chrome,
+			body:not([data-ready]) .lep-map-scrim,
+			body:not([data-ready]) .lep-map-scrim-bl {
+				opacity: 0;
+			}
+			.lep-chrome,
+			.lep-map-scrim,
+			.lep-map-scrim-bl {
+				transition: opacity 240ms ease;
+			}
+			@media (prefers-reduced-motion: reduce) {
+				.lep-chrome,
+				.lep-map-scrim,
+				.lep-map-scrim-bl { transition: none; }
+			}
+
+			/* The DLS chrome overlay sits above the map, VIEWPORT-ANCHORED (NOT a
+			   centered scaled box). Its children are positioned absolutely against
+			   the viewport edges and sized in reference-px × var(--u), so the lockup
+			   pins to the viewport's actual top-left and the legend to its
+			   bottom-left — no gap/seam on the left, content not shifted right.
+			   The MAP IS NOT INSIDE this overlay (it stays full-bleed/un-scaled). */
+			.lep-chrome {
+				position: fixed;
+				inset: 0;
+				z-index: 2;
+				pointer-events: none; /* map drags pass through; legend re-enables */
+				background: transparent;
+			}
+
+			/* Left scrim: darkens behind the lockup + legend so type reads over a
+			   brighter map center, without re-darkening the whole frame
+			   (the hormuz-map pattern; direction §5.4). Anchored to the VIEWPORT
+			   (from x0) so there's NO ungradient'd strip on the left edge. */
+			.lep-map-scrim {
+				position: fixed;
+				inset: 0;
+				z-index: 2;
+				pointer-events: none;
+				background: linear-gradient(
+					90deg,
+					rgba(7, 11, 18, 0.86) 0%,
+					rgba(7, 11, 18, 0.5) 22%,
+					rgba(7, 11, 18, 0.12) 40%,
+					rgba(7, 11, 18, 0) 54%
+				);
+			}
+			/* A soft bottom-left wedge so the legend reads over the south shore. */
+			.lep-map-scrim-bl {
+				position: fixed;
+				inset: 0;
+				z-index: 2;
+				pointer-events: none;
+				background: radial-gradient(
+					120% 80% at 0% 100%,
+					rgba(7, 11, 18, 0.7) 0%,
+					rgba(7, 11, 18, 0.28) 30%,
+					rgba(7, 11, 18, 0) 52%
+				);
+			}
+
+			/* ===== CHROME GEOMETRY (reference-px × var(--u), viewport-anchored) =====
+			   The lockup/legend element classes come from base.css but are authored
+			   there against the (now-removed) scaled .lep-stage. Here we re-anchor +
+			   re-size them in var(--u) units against the viewport, so they pin to the
+			   real viewport top-left / bottom-left at DLS proportions on any wall. */
+			.lep-lockup {
+				position: fixed;
+				left: calc(90 * var(--u));   /* title-safe inset */
+				top: calc(54 * var(--u));
+				max-width: calc(1180 * var(--u));
+				z-index: 2;
+			}
+			.lep-kicker {
+				font-size: calc(34 * var(--u));
+				margin: 0 0 calc(18 * var(--u)) 0;
+			}
+			.lep-headline.lep-headline--map {
+				font-size: calc(72 * var(--u));
+			}
+			.lep-subhead {
+				font-size: calc(30 * var(--u));
+				margin: calc(22 * var(--u)) 0 0 0;
+				white-space: nowrap;
+				max-width: none;
+			}
+			.lep-legend {
+				position: fixed;
+				left: calc(90 * var(--u));
+				bottom: calc(72 * var(--u));
+				gap: calc(16 * var(--u));
+				padding: calc(20 * var(--u)) calc(26 * var(--u)) calc(22 * var(--u)) calc(22 * var(--u));
+				border-radius: calc(14 * var(--u));
+				z-index: 2;
+			}
+			.lep-legend .lep-legend-row {
+				gap: calc(18 * var(--u));
+				font-size: calc(34 * var(--u));
+			}
+			.lep-legend .lep-swatch {
+				width: calc(40 * var(--u));
+				height: calc(40 * var(--u));
+				border-radius: calc(8 * var(--u));
+			}
+
+			/* =============================================================
+			   GEO-ANCHORED MARKER STYLES (DLS look, preserved from M2)
+			   These style the DOM elements of maplibregl.Marker instances.
+			   maplibregl positions the marker root at its lng/lat; our inner
+			   flex row carries the DLS pill/dot/halo + label.
+			   ============================================================= */
+
+			/* Featured (story) marker — DOMINATES. 40px / 700 / halo (+pill). */
+			.lep-mk-featured {
+				display: flex;
+				align-items: center;
+				gap: 16px;
+				white-space: nowrap;
+				font-family: var(--lep-font-sans);
+				font-size: var(--lep-size-label-featured);
+				font-weight: var(--lep-weight-bold);
+				letter-spacing: -0.005em;
+				color: var(--lep-ink-100);
+				text-shadow: var(--lep-halo-featured);
+				cursor: default;
+			}
+			.lep-mk-featured.lep-pill {
+				background: var(--lep-overlay-pill);
+				border: 2px solid rgba(255, 255, 255, 0.2);
+				padding: 10px 22px;
+				border-radius: var(--lep-radius-lg);
+				backdrop-filter: blur(2px);
+				box-shadow: var(--lep-shadow-lg);
+			}
+			/* The story-tier dot. */
+			.lep-mk-dot {
+				width: 26px;
+				height: 26px;
+				border-radius: 50%;
+				background: var(--lep-data-accent);
+				box-shadow:
+					0 0 0 6px rgba(10, 14, 20, 0.85),
+					0 0 20px rgba(255, 178, 63, 0.65);
+				flex: none;
+			}
+			.lep-mk-dot.primary {
+				background: var(--lep-data-primary);
+				box-shadow:
+					0 0 0 6px rgba(10, 14, 20, 0.85),
+					0 0 22px rgba(79, 179, 255, 0.7);
+			}
+
+			/* Orientation (basemap) marker — RECESSED. 22px / 400 / ~0.7. */
+			.lep-mk-orientation {
+				display: flex;
+				align-items: center;
+				white-space: nowrap;
+				font-family: var(--lep-font-sans);
+				font-size: var(--lep-size-label-orientation);
+				font-weight: var(--lep-weight-regular);
+				letter-spacing: 0.02em;
+				color: var(--lep-ink-muted);
+				opacity: 0.7;
+				text-shadow: var(--lep-halo-orientation);
+				cursor: default;
+			}
+			.lep-mk-orientation.sea {
+				font-style: italic;
+				letter-spacing: 0.24em;
+				text-transform: uppercase;
+				font-size: 20px;
+				color: #8aa0b6;
+				opacity: 0.5;
+			}
+			.lep-mk-orientation .lep-mk-tickdot {
+				display: inline-block;
+				width: 5px;
+				height: 5px;
+				border-radius: 50%;
+				background: var(--lep-ink-muted);
+				margin-right: 8px;
+				flex: none;
+				opacity: 0.75;
+			}
+
+			/* Strip MapLibre's default marker behaviors we don't want. */
+			.maplibregl-marker { will-change: transform; }
+
+			/* Static-fallback labels: positioned by x/y in the 1920x1080 reference
+			   field, scaled by var(--u) and centered to match the static SVG's
+			   xMidYMid slice-fit. Each child reuses the .lep-mk-* DLS styling but is
+			   absolutely placed and centered on its point. (Offline-only path; the
+			   live map replaces these with geo-anchored markers and hides this layer
+			   on hand-off.) */
+			#static-labels-layer {
+				position: fixed;
+				inset: 0;
+				z-index: 2;
+				pointer-events: none;
+				display: none;
+			}
+			#static-labels-layer.is-shown { display: block; }
+			#static-labels {
+				position: absolute;
+				left: 50%;
+				top: 50%;
+				width: calc(1920 * var(--u));
+				height: calc(1080 * var(--u));
+				transform: translate(-50%, -50%);
+				pointer-events: none;
+			}
+			#static-labels .lep-mk-static {
+				position: absolute;
+				transform: translate(-50%, -50%);
+			}
+		</style>
+	</head>
+	<body>
+		<!-- ============ STATIC SVG FALLBACK BASEMAP (safety net) ============ -->
+		<!-- Renders UNDER the live map so the frame is never blank if tiles fail
+		     to load (offline / blocked). The live map hides this (.is-hidden)
+		     once it has actually painted. Stylized deep-blue water / slate land
+		     in the M1 Hormuz palette; clearly illustrative, not to scale. -->
+		<div id="static-map">
+			<svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+				<defs>
+					<radialGradient id="m-sea" cx="52%" cy="50%" r="78%">
+						<stop offset="0%" stop-color="#1e5a90" />
+						<stop offset="55%" stop-color="#174870" />
+						<stop offset="100%" stop-color="#0e2c47" />
+					</radialGradient>
+					<filter id="m-land" x="-10%" y="-10%" width="120%" height="120%">
+						<feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.55" />
+					</filter>
+				</defs>
+				<!-- deep-blue water (the M1 Hormuz look) -->
+				<rect x="0" y="0" width="1920" height="1080" fill="url(#m-sea)" />
+				<g stroke="#2f6ea0" stroke-width="1.2" opacity="0.30">
+					<line x1="0" y1="270" x2="1920" y2="270" />
+					<line x1="0" y1="540" x2="1920" y2="540" />
+					<line x1="0" y1="810" x2="1920" y2="810" />
+					<line x1="480" y1="0" x2="480" y2="1080" />
+					<line x1="960" y1="0" x2="960" y2="1080" />
+					<line x1="1440" y1="0" x2="1440" y2="1080" />
+				</g>
+				<!-- slate landmasses framing a central strait -->
+				<g filter="url(#m-land)" fill="#33485f" stroke="#1d2b3b" stroke-width="3" stroke-linejoin="round">
+					<!-- north shore (upper landmass) -->
+					<path d="M 0,0 L 1920,0 L 1920,250 C 1740,300 1560,300 1420,360
+						C 1280,420 1180,470 1040,470 C 980,470 940,440 900,410
+						C 840,366 780,360 700,392 C 620,424 560,420 480,392
+						C 400,364 340,360 260,392 C 180,424 90,420 0,392 Z" />
+					<!-- south shore (lower landmass) -->
+					<path d="M 0,1080 L 1920,1080 L 1920,720 C 1760,672 1600,672 1460,720
+						C 1320,768 1220,790 1080,766 C 1020,756 980,720 940,684
+						C 880,630 800,624 720,656 C 640,688 560,684 480,652
+						C 400,620 320,624 240,656 C 150,692 70,690 0,668 Z" />
+				</g>
+				<!-- subtle inland tone variation on the slate so it reads as terrain -->
+				<g fill="#3c5470" opacity="0.5">
+					<path d="M 1420,80 C 1620,120 1820,110 1920,90 L 1920,250
+						C 1740,300 1560,300 1420,360 C 1380,260 1390,160 1420,80 Z" />
+					<path d="M 240,860 C 420,830 600,840 760,884 C 700,940 560,960 420,948
+						C 320,940 260,910 240,860 Z" />
+				</g>
+				<!-- shipping approach corridor accent (the story geography) -->
+				<path d="M 760,520 C 900,540 1020,520 1140,540 C 1240,556 1340,560 1440,600"
+					fill="none" stroke="rgba(150,215,255,0.9)" stroke-width="5"
+					stroke-dasharray="3 12" stroke-linecap="round" />
+			</svg>
+		</div>
+
+		<!-- ============ LIVE MAPLIBRE MAP (full-bleed, native px) ============ -->
+		<div id="map"></div>
+
+		<!-- ============ DLS CHROME OVERLAY (viewport-anchored, NOT scaled) =======
+		     The lockup/legend/scrims are sized in reference-px × var(--u) and pinned
+		     to the VIEWPORT's own edges (no centering, no left gap). The MAP IS NOT
+		     INSIDE this overlay — it stays full-bleed/un-scaled. -->
+		<!-- Legibility scrims behind the left-column chrome (viewport-anchored). -->
+		<div class="lep-map-scrim"></div>
+		<div class="lep-map-scrim-bl"></div>
+
+		<div class="lep-chrome">
+			<!-- Lockup zone — top-left (pinned to the viewport's top-left). -->
+			<div class="lep-lockup">
+				<p class="lep-kicker" data-bind="eyebrow"></p>
+				<h1 class="lep-headline lep-headline--map" data-bind="headline"></h1>
+				<p class="lep-subhead" data-bind="subhead"></p>
+			</div>
+
+			<!-- Legend zone — bottom-left (pinned to the viewport's bottom-left). -->
+			<div class="lep-legend" id="legend" style="display: none"></div>
+		</div>
+
+		<!-- Static-fallback labels — placed in the 1920x1080 reference field by
+		     each label's x/y (× var(--u), centered to match the slice-fit static
+		     SVG), over the static SVG basemap. The OFFLINE render (and the headless
+		     harness, which can't composite live WebGL) shows these; the live map
+		     replaces them with geo-anchored maplibregl.Markers and this layer is
+		     hidden on hand-off. -->
+		<div id="static-labels-layer">
+			<div id="static-labels"></div>
+		</div>
+
+		<!-- Inline content fallback. content.json is the editable source of truth
+		     over HTTP (production / on-air). The render harness loads via file://
+		     where fetch() is blocked, so the same sample content is mirrored here
+		     so the frame renders deterministically offline. Keep in sync with
+		     content.json (or delete once the bundle is only served over HTTP). -->
+		<script type="application/json" id="lep-content-fallback">
+{
+  "eyebrow": "Maritime Chokepoint",
+  "headline": "The Narrows",
+  "subhead": "A fifth of seaborne trade funnels through one strait.",
+  "basemap": { "styleUrl": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
+  "camera": {
+    "bounds": [[54.8, 25.2], [58.0, 27.4]],
+    "fitPadding": 80,
+    "center": [56.3, 26.4],
+    "zoom": 6.4
+  },
+  "featuredLabels": [
+    { "text": "The Narrows", "lngLat": [56.45, 26.55], "x": 1080, "y": 548, "pill": true, "primary": true },
+    { "text": "North Port", "lngLat": [56.27, 27.15], "x": 1030, "y": 430, "dot": true }
+  ],
+  "orientationLabels": [
+    { "text": "NORTHLAND", "lngLat": [56.6, 27.25], "x": 660, "y": 250 },
+    { "text": "SOUTHCOAST", "lngLat": [56.2, 25.5], "x": 700, "y": 880 },
+    { "text": "Inner Sea", "lngLat": [55.3, 26.6], "x": 380, "y": 560, "sea": true },
+    { "text": "Open Gulf", "lngLat": [57.4, 25.6], "x": 1560, "y": 600, "sea": true },
+    { "text": "West Harbor", "lngLat": [55.5, 26.9], "x": 470, "y": 470, "dot": true },
+    { "text": "South Quay", "lngLat": [57.0, 26.0], "x": 1360, "y": 700, "dot": true },
+    { "text": "Headland", "lngLat": [56.7, 26.3], "x": 1240, "y": 410, "dot": true }
+  ],
+  "regions": [
+    {
+      "id": "approach",
+      "label": "Shipping approach",
+      "color": "#4fb3ff",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[55.7, 26.1], [57.2, 26.1], [57.2, 26.9], [55.7, 26.9], [55.7, 26.1]]
+        ]
+      }
+    }
+  ],
+  "legend": {
+    "rows": [
+      { "label": "Shipping lane", "color": "rgba(150,215,255,0.92)" },
+      { "label": "Key port", "color": "#ffb23f" }
+    ]
+  },
+  "source": "Demo geography · not to scale"
+}
+		</script>
+
+		<script src="./lib/helpers.js"></script>
+		<script>
+			// Inline-fallback loader: prefer fetch (HTTP / on-air), fall back to the
+			// embedded JSON when fetch is unavailable (file:// render harness).
+			function inlineFallback() {
+				const node = document.getElementById('lep-content-fallback');
+				try { return node ? JSON.parse(node.textContent) : {}; }
+				catch (e) { return {}; }
+			}
+
+			// Keep the chrome unit (--u) current. The DLS chrome (lockup / legend /
+			// scrims) is sized in reference-px × var(--u) and VIEWPORT-ANCHORED
+			// (matching iran-alignment) — NOT a centered transform: scale() box. So
+			// the lockup pins to the viewport's actual top-left, the legend to its
+			// bottom-left, the left scrim starts at x0, and there's no left gap /
+			// right-shift. The map stays OUTSIDE this and is never scaled.
+			function setU() {
+				const u = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+				document.documentElement.style.setProperty('--u', u + 'px');
+			}
+			setU();
+			window.addEventListener('resize', setU);
+
+			// Build a DLS featured-label marker element.
+			function featuredEl(l) {
+				const el = document.createElement('div');
+				el.className = 'lep-mk-featured' + (l.pill ? ' lep-pill' : '');
+				const dot = document.createElement('span');
+				dot.className = 'lep-mk-dot' + (l.primary ? ' primary' : '');
+				el.appendChild(dot);
+				const t = document.createElement('span');
+				t.textContent = l.text || '';
+				el.appendChild(t);
+				return el;
+			}
+
+			// Build a DLS orientation-label marker element.
+			function orientationEl(l) {
+				const el = document.createElement('div');
+				el.className = 'lep-mk-orientation' + (l.sea ? ' sea' : '');
+				if (l.dot) {
+					const d = document.createElement('span');
+					d.className = 'lep-mk-tickdot';
+					el.appendChild(d);
+				}
+				el.appendChild(document.createTextNode(l.text || ''));
+				return el;
+			}
+
+			// Build the static-fallback labels over the static SVG basemap. Placed
+			// in the 1920x1080 reference field by each label's x/y (reference px),
+			// scaled by var(--u) so they track the slice-fit static SVG. The live
+			// map replaces these with geo-anchored markers and hides this layer on
+			// hand-off. Orientation first (under featured in DOM).
+			function buildStaticLabels(content) {
+				const root = document.getElementById('static-labels');
+				if (!root) return;
+				root.innerHTML = '';
+				function place(inner, l) {
+					if (l.x == null || l.y == null) return;
+					const w = document.createElement('div');
+					w.className = 'lep-mk-static';
+					w.style.left = 'calc(' + l.x + ' * var(--u))';
+					w.style.top = 'calc(' + l.y + ' * var(--u))';
+					w.appendChild(inner);
+					root.appendChild(w);
+				}
+				(content.orientationLabels || []).forEach(function (l) {
+					place(orientationEl(l), l);
+				});
+				(content.featuredLabels || []).forEach(function (l) {
+					place(featuredEl(l), l);
+				});
+			}
+
+			(async function () {
+				let manifest = {};
+				let content = {};
+				try { manifest = await leporello.loadManifest(); } catch (e) {}
+				try { content = await leporello.loadContent(); } catch (e) { content = inlineFallback(); }
+				leporello.applyVersionStamp(manifest);
+
+				// Lockup text bindings.
+				['eyebrow', 'headline', 'subhead'].forEach(function (key) {
+					document.querySelectorAll('[data-bind="' + key + '"]').forEach(function (el) {
+						if (content[key]) el.textContent = content[key];
+					});
+				});
+				if (!content.subhead) {
+					const sh = document.querySelector('.lep-subhead');
+					if (sh) sh.style.display = 'none';
+				}
+
+				// Legend — first-class tier (≥34px rows, large swatches).
+				if (content.legend && Array.isArray(content.legend.rows) && content.legend.rows.length) {
+					const legend = document.getElementById('legend');
+					legend.style.display = 'flex';
+					legend.style.pointerEvents = 'auto';
+					content.legend.rows.forEach(function (r) {
+						const row = document.createElement('div');
+						row.className = 'lep-legend-row';
+						const sw = document.createElement('span');
+						sw.className = 'lep-swatch';
+						sw.style.background = r.color || 'var(--lep-data-primary)';
+						row.appendChild(sw);
+						row.appendChild(document.createTextNode(r.label || ''));
+						legend.appendChild(row);
+					});
+				}
+
+				// Keep the chrome unit (--u) current (chrome is sized in
+				// reference-px × var(--u), viewport-anchored — the map is NOT scaled).
+				setU();
+
+				// Build static-fallback labels over the static SVG basemap so the
+				// frame is legible offline / in the headless harness (which can't
+				// composite live WebGL). The live map hides these on hand-off.
+				buildStaticLabels(content);
+
+				// ---- Live MapLibre map (full-bleed, native px) -----------------
+				const cam = content.camera || {};
+				const hasBounds = Array.isArray(cam.bounds) && cam.bounds.length === 2;
+				const map = new maplibregl.Map({
+					container: 'map',
+					style:
+						(content.basemap && content.basemap.styleUrl) ||
+						'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+					center: cam.center || [56.3, 26.4],
+					zoom: cam.zoom != null ? cam.zoom : 6.4,
+					pitch: cam.pitch || 0,
+					bearing: cam.bearing || 0,
+					attributionControl: false, // §5.14 — no on-frame attribution
+				});
+
+				// Exposed for the on-air map telestrator (manifest telestrator:"map").
+				// The on-air page is cross-origin and cannot read this directly — it
+				// drives the postMessage receiver below — but it's exposed regardless
+				// for same-origin debugging and parity with the canonical template.
+				window.leporelloMap = map;
+				window.leporelloBundle = { map: map };
+
+				// Keep the map sized to the iframe as the on-air shell resizes it.
+				if (window.ResizeObserver) {
+					new ResizeObserver(function () { map.resize(); }).observe(
+						document.getElementById('map')
+					);
+				}
+
+				// --- Map telestration receiver (postMessage) -------------------
+				// The on-air page is a different origin and can't touch this map
+				// object, so it forwards pointer events here over the "lepo-tele"
+				// channel with x,y in TRUE VIEWPORT PX. We draw the in-progress
+				// stroke on a 2D canvas for low-latency multi-pointer feedback,
+				// then on pointer-up unproject it to lng/lat and commit it to a
+				// MapLibre GL line layer so it re-projects natively through pan /
+				// zoom / bearing. The parent owns persistence (setFeatures =
+				// replay / undo / redo / clear). Mirrors the on-air MapTelestrator
+				// and the canonical skill map template VERBATIM. Because the map is
+				// full-bleed (no CSS scale), unproject([x,y]) is correct as-is.
+				const TELE_SOURCE = 'lep-telestrations';
+				const TELE_LAYER = 'lep-telestrations-line';
+				const TELE_MIN_DIST_SQ = 16; // 4px min sample distance while drawing
+				let teleFeatures = []; // committed strokes (lng/lat) → MapLibre GL
+				const teleActive = new Map(); // pointerId → { points, color, width }
+
+				const teleCanvas = document.createElement('canvas');
+				teleCanvas.style.cssText = 'position:fixed;inset:0;z-index:3;pointer-events:none';
+				document.body.appendChild(teleCanvas);
+				let teleCtx = null;
+				function teleResizeCanvas() {
+					const dpr = window.devicePixelRatio || 1;
+					const w = window.innerWidth, h = window.innerHeight;
+					teleCanvas.width = Math.max(1, Math.round(w * dpr));
+					teleCanvas.height = Math.max(1, Math.round(h * dpr));
+					teleCanvas.style.width = w + 'px';
+					teleCanvas.style.height = h + 'px';
+					teleCtx = teleCanvas.getContext('2d');
+					if (teleCtx) teleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+					teleRedrawActive();
+				}
+				function teleRedrawActive() {
+					if (!teleCtx) return;
+					teleCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+					teleCtx.lineCap = 'round';
+					teleCtx.lineJoin = 'round';
+					for (const s of teleActive.values()) {
+						if (s.points.length < 1) continue;
+						teleCtx.beginPath();
+						teleCtx.moveTo(s.points[0][0], s.points[0][1]);
+						for (let i = 1; i < s.points.length; i++) teleCtx.lineTo(s.points[i][0], s.points[i][1]);
+						teleCtx.strokeStyle = s.color;
+						teleCtx.lineWidth = s.width;
+						teleCtx.stroke();
+					}
+				}
+				if (window.ResizeObserver) new ResizeObserver(teleResizeCanvas).observe(document.body);
+				teleResizeCanvas();
+
+				function teleData() { return { type: 'FeatureCollection', features: teleFeatures }; }
+				function teleRender() {
+					const src = map.getSource(TELE_SOURCE);
+					if (src) src.setData(teleData());
+				}
+				function teleEnsureLayer() {
+					if (map.getSource(TELE_SOURCE)) return;
+					map.addSource(TELE_SOURCE, { type: 'geojson', data: teleData() });
+					map.addLayer({
+						id: TELE_LAYER,
+						type: 'line',
+						source: TELE_SOURCE,
+						layout: { 'line-cap': 'round', 'line-join': 'round' },
+						paint: {
+							'line-color': ['get', 'color'],
+							'line-width': ['get', 'width'],
+							'line-opacity': ['coalesce', ['get', 'opacity'], 1],
+						},
+					});
+				}
+				function telePost(msg) {
+					try {
+						window.parent.postMessage(Object.assign({ ch: 'lepo-tele' }, msg), '*');
+					} catch (e) {}
+				}
+				function teleCommit(s) {
+					if (s.points.length < 2) return;
+					const coords = s.points.map(function (p) {
+						const ll = map.unproject([p[0], p[1]]);
+						return [parseFloat(ll.lng.toFixed(6)), parseFloat(ll.lat.toFixed(6))];
+					});
+					const feature = {
+						type: 'Feature',
+						geometry: { type: 'LineString', coordinates: coords },
+						properties: {
+							id: 't' + Date.now() + '-' + Math.round(Math.random() * 1e6),
+							color: s.color, width: s.width, opacity: 1,
+						},
+					};
+					teleFeatures.push(feature);
+					teleRender();
+					telePost({ type: 'committed', feature: feature });
+				}
+				function teleOnPointer(m) {
+					const id = m.pointerId != null ? m.pointerId : 0;
+					if (m.phase === 'down') {
+						teleActive.set(id, {
+							points: [[m.x, m.y]],
+							color: m.color || '#ff3b30',
+							width: m.width || 8,
+						});
+						teleRedrawActive();
+					} else if (m.phase === 'move') {
+						const s = teleActive.get(id);
+						if (!s) return;
+						const last = s.points[s.points.length - 1];
+						const dx = m.x - last[0], dy = m.y - last[1];
+						if (dx * dx + dy * dy < TELE_MIN_DIST_SQ) return;
+						s.points.push([m.x, m.y]);
+						teleRedrawActive();
+					} else if (m.phase === 'up') {
+						const s = teleActive.get(id);
+						if (!s) return;
+						teleCommit(s);
+						// Hold the canvas stroke until MapLibre paints its line so
+						// the hand-off shows no one-frame flash.
+						map.once('render', function () {
+							teleActive.delete(id);
+							teleRedrawActive();
+						});
+					}
+				}
+				window.addEventListener('message', function (e) {
+					const d = e.data;
+					if (!d || d.ch !== 'lepo-tele') return;
+					if (d.type === 'setFeatures') {
+						teleFeatures = Array.isArray(d.features) ? d.features : [];
+						teleRender();
+					} else if (d.type === 'pointer') {
+						teleOnPointer(d);
+					} else if (d.type === 'cancel') {
+						teleActive.clear();
+						teleRedrawActive();
+					}
+				});
+
+				// --- Overlays: regions + geo-anchored markers + tele layer ------
+				let overlaysAdded = false;
+				function recolorBasemap() {
+					// CARTO Dark Matter is near-black — over open water it reads as an
+					// empty frame. Recolor into a legible broadcast map (deep-blue water,
+					// dark-slate land, faint admin lines) so geography + featured markers
+					// read, matching the M1 Hormuz look.
+					try {
+						(map.getStyle().layers || []).forEach(function (ly) {
+							const id = ly.id || '';
+							if (id.indexOf('lep-') === 0) return;
+							try {
+								if (ly.type === 'background') map.setPaintProperty(id, 'background-color', '#0b1a2b');
+								else if (ly.type === 'fill' && /water|ocean|sea|marine/i.test(id)) {
+									map.setPaintProperty(id, 'fill-color', '#15436e');
+									map.setPaintProperty(id, 'fill-opacity', 1);
+								} else if (ly.type === 'line' && /water|river|stream/i.test(id)) {
+									map.setPaintProperty(id, 'line-color', '#1c5283');
+								} else if (ly.type === 'fill' && /(landcover|landuse|land$|park|wood|forest|sand)/i.test(id)) {
+									map.setPaintProperty(id, 'fill-color', '#0f2335');
+								} else if (ly.type === 'line' && /(boundary|admin)/i.test(id)) {
+									map.setPaintProperty(id, 'line-color', 'rgba(170,200,228,0.4)');
+								}
+							} catch (e) {}
+						});
+					} catch (e) {}
+				}
+				function addOverlays() {
+					if (overlaysAdded) return;
+					overlaysAdded = true;
+					recolorBasemap();
+
+					// Optional GeoJSON regions from content.regions.
+					const regions = Array.isArray(content.regions) ? content.regions : [];
+					if (regions.length) {
+						map.addSource('lep-regions', {
+							type: 'geojson',
+							data: {
+								type: 'FeatureCollection',
+								features: regions
+									.filter(function (r) { return r && r.geometry; })
+									.map(function (r) {
+										return {
+											type: 'Feature',
+											properties: { id: r.id, label: r.label || '', color: r.color || '#4fb3ff' },
+											geometry: r.geometry,
+										};
+									}),
+							},
+						});
+						map.addLayer({
+							id: 'lep-regions-fill', type: 'fill', source: 'lep-regions',
+							paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.45 },
+						});
+						map.addLayer({
+							id: 'lep-regions-outline', type: 'line', source: 'lep-regions',
+							paint: { 'line-color': ['get', 'color'], 'line-width': 2 },
+						});
+					}
+
+					// Telestration layer on TOP of regions; announce readiness so
+					// the parent can replay any stored strokes.
+					teleEnsureLayer();
+					teleRender();
+					telePost({ type: 'ready' });
+				}
+				map.on('style.load', addOverlays);
+				if (map.isStyleLoaded()) addOverlays();
+
+				// --- Geo-anchored place-label markers (pan/zoom WITH the map) ----
+				// Orientation first (so featured pills draw above them in DOM),
+				// then featured. anchor:'left' so the dot/pill leads the label.
+				(content.orientationLabels || []).forEach(function (l) {
+					if (!l || !Array.isArray(l.lngLat)) return;
+					new maplibregl.Marker({ element: orientationEl(l), anchor: 'left' })
+						.setLngLat(l.lngLat)
+						.addTo(map);
+				});
+				(content.featuredLabels || []).forEach(function (l) {
+					if (!l || !Array.isArray(l.lngLat)) return;
+					new maplibregl.Marker({ element: featuredEl(l), anchor: 'left' })
+						.setLngLat(l.lngLat)
+						.addTo(map);
+				});
+
+				// --- Camera fit + load gating (kill the basemap + blob flash) ----
+				// Reveal gates the CHROME + SCRIMS via body[data-ready] — NOT the
+				// #map canvas (which paints immediately under the per-element gate,
+				// never under an ancestor opacity transition).
+				//
+				// THE BLOB-FLASH FIX: the static SVG fallback starts HIDDEN
+				// (display:none). On the NORMAL path it NEVER becomes visible — the
+				// live map reveals once its style has loaded + tiles have painted, so
+				// the viewer never sees the giant smooth-blob static choropleth flash.
+				// The static fallback is shown ONLY if the live map FAILS: a Map
+				// `error`, or a tiles-not-loaded timeout (~4s) that finds no painted
+				// live tiles. liveBasemapPainted() decides which path on reveal.
+				let revealed = false;
+				let staticShown = false;
+				function liveBasemapPainted() {
+					// Gate on GENUINELY rendered tiles — the basemap has actually
+					// painted features into the GL canvas — not merely
+					// `isStyleLoaded()` (true even when no tile ever arrives). If the
+					// live map can't paint (offline / blocked tiles / a headless
+					// compositor that drops the GL layer), we fall to the static SVG.
+					try {
+						return (
+							map.isStyleLoaded() &&
+							map.loaded() &&
+							map.queryRenderedFeatures().length > 0
+						);
+					} catch (e) {
+						return false;
+					}
+				}
+				// Failure path ONLY: reveal the static SVG fallback + its labels and
+				// hide the (possibly black / empty) live canvas + its empty geo
+				// markers, so the frame is never blank when tiles never arrive.
+				function showStaticFallback() {
+					if (staticShown) return;
+					if (liveBasemapPainted()) return; // live map is fine — never show blobs
+					staticShown = true;
+					const sm = document.getElementById('static-map');
+					const sl = document.getElementById('static-labels-layer');
+					const m = document.getElementById('map');
+					if (sm) sm.classList.add('is-shown');
+					if (sl) sl.classList.add('is-shown');
+					if (m) m.style.display = 'none';
+					document.querySelectorAll('.maplibregl-marker').forEach(function (mk) {
+						mk.style.display = 'none';
+					});
+					document.body.setAttribute('data-ready', '');
+				}
+				function reveal() {
+					if (revealed) return;
+					revealed = true;
+					document.body.setAttribute('data-ready', '');
+					// Normal path: live basemap painted → do NOTHING with the static
+					// fallback (it stays display:none, so no blob flash). Only if the
+					// live map genuinely failed to paint do we fall back to the static
+					// SVG (and hide the empty live canvas).
+					if (!liveBasemapPainted()) showStaticFallback();
+				}
+				map.on('load', function () {
+					if (hasBounds) {
+						// fitBounds then reveal once the camera settles (idle).
+						map.once('idle', reveal);
+						map.fitBounds(cam.bounds, {
+							padding: cam.fitPadding != null ? cam.fitPadding : 80,
+							animate: false,
+						});
+						// Safety: reveal anyway if idle is slow.
+						setTimeout(reveal, 4000);
+					} else {
+						map.once('idle', reveal);
+						setTimeout(reveal, 4000);
+					}
+				});
+				// If the basemap never loads (offline / blocked tiles), fall back to
+				// the static SVG — but ONLY on genuine failure. A Map `error` shows
+				// the fallback; a tiles-not-loaded timeout (~4s) shows it only if no
+				// live tiles ever painted. The chrome reveals either way.
+				map.on('error', function () { setTimeout(showStaticFallback, 800); });
+				setTimeout(showStaticFallback, 4000);
+				setTimeout(reveal, 8000);
+			})().catch(function (err) {
+				console.error('[leporello-bundle] failed to bootstrap:', err);
+				document.body.setAttribute('data-ready', '');
+				document.body.innerHTML =
+					'<pre style="color:#f87171;padding:24px;font-family:monospace">' +
+					'Bundle failed to load: ' +
+					String(err && err.message ? err.message : err) +
+					'</pre>';
+			});
+		</script>
+	</body>
+</html>

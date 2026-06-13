@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "leporello": {
+      "type": "http",
+      "url": "https://mcp.leporello.tv/mcp/v1",
+      "headers": {
+        "Authorization": "Bearer ${LEPORELLO_TOKEN}"
+      }
+    }
+  }
+}

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Leporello quote-card bundle</title>
+		<link rel="stylesheet" href="./lib/tokens.css" />
+		<link rel="stylesheet" href="./lib/base.css" />
+		<style>
+			/* =================================================================
+			   QUOTE-CARD — v1 DLS restyle.
+
+			   A single pull-quote, left-weighted, restrained. The quote IS the
+			   asset's one takeaway (direction §5.1). It runs at the headline
+			   tier — big and readable — with an accent rule on the left edge
+			   that reads as a broadcast "blockquote bar," not decoration.
+
+			   Layout uses the named regions from base.css: a lockup (kicker),
+			   a centered quote block in the composition zone, an attribution
+			   block styled like a broadcast lower-third, and a corner source
+			   strip. A full-bleed ambient background-media layer (mounted by
+			   the helper) kills the dead dark field a lone quote would leave
+			   (direction §5.4); the mandatory scrim keeps the quote legible.
+
+			   Everything critical stays left of x1574 (the presenter column);
+			   the background runs full-bleed and the presenter stands in front.
+			   ================================================================= */
+
+			/* Full-stage content wrapper (single direct child of .lep-stage, so
+			   base.css's relative-positioning override lands here, not on the
+			   absolutely-positioned regions inside). */
+			.lep-content {
+				/* base.css forces this (the stage's lone direct child) to
+				   position:relative; give it the full stage size so it is the
+				   containing block for the absolutely-positioned regions. */
+				position: relative;
+				width: var(--lep-stage-w);
+				height: var(--lep-stage-h);
+			}
+
+			/* The quote lives in its own column, vertically centered between the
+			   lockup and the attribution. Held inside the composition zone. */
+			.lep-quote-stage {
+				position: absolute;
+				left: var(--lep-title-safe-inset);
+				/* keep clear of the presenter column (x > 1574) */
+				right: calc(
+					var(--lep-stage-w) - var(--lep-comp-zone-w) +
+						var(--lep-title-safe-inset)
+				);
+				/* sits in the upper-middle band, well clear of the bottom-left
+				   attribution block (which occupies ~y780-990) */
+				top: 300px;
+				bottom: 360px;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+			}
+
+			/* The accent rule: a vertical bar on the left edge of the quote.
+			   One story color (data-accent). This is the only ornament — it
+			   reads as editorial blockquote grammar, not decoration. */
+			.lep-quote-block {
+				position: relative;
+				padding-left: 52px;
+				border-left: 10px solid var(--lep-data-accent);
+			}
+
+			/* The quote runs at the headline tier (the slide's one point).
+			   Weight ExtraBold for camera survival; tight leading so a long
+			   quote stays compact. */
+			.lep-quote-body {
+				font-size: var(--lep-size-headline);
+				font-weight: var(--lep-weight-extrabold);
+				line-height: var(--lep-leading-snug);
+				letter-spacing: var(--lep-tracking-headline);
+				color: var(--lep-ink-100);
+				margin: 0;
+				text-shadow: 0 3px 22px rgba(0, 0, 0, 0.6);
+			}
+
+			/* A long quote auto-shrinks one notch via the [data-long] hook set
+			   in JS, so multi-sentence pulls still fit without overflowing the
+			   composition zone. Still well above any floor. */
+			.lep-quote-body[data-long='true'] {
+				font-size: 68px;
+			}
+			.lep-quote-body[data-long='very'] {
+				font-size: 58px;
+				line-height: var(--lep-leading-normal);
+			}
+
+			/* Attribution — broadcast lower-third grammar. Name at a heavy,
+			   dominant secondary tier, role recessed beneath in the story-blue,
+			   optional context line smaller still. Anchored bottom-left, well
+			   clear of the source strip. */
+			.lep-quote-attribution {
+				position: absolute;
+				left: var(--lep-title-safe-inset);
+				bottom: var(--lep-space-6);
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+				max-width: 1180px;
+			}
+
+			.lep-quote-speaker {
+				font-size: 56px;
+				font-weight: var(--lep-weight-black);
+				line-height: 1;
+				letter-spacing: var(--lep-tracking-headline);
+				color: var(--lep-ink-100);
+				margin: 0;
+				text-shadow: 0 2px 14px rgba(0, 0, 0, 0.7);
+			}
+
+			.lep-quote-speaker-title {
+				font-size: var(--lep-size-subhead);
+				font-weight: var(--lep-weight-semibold);
+				line-height: var(--lep-leading-normal);
+				color: var(--lep-data-primary);
+				margin: 4px 0 0 0;
+				text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
+			}
+
+			.lep-quote-context {
+				font-size: var(--lep-size-source);
+				font-weight: var(--lep-weight-medium);
+				letter-spacing: var(--lep-tracking-source);
+				text-transform: uppercase;
+				color: var(--lep-ink-muted);
+				margin: 10px 0 0 0;
+				text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+			}
+		</style>
+	</head>
+	<body>
+		<div class="lep-stage-wrap">
+			<div class="lep-stage">
+				<!-- background-media layer mounted by the helper (see script) -->
+
+				<!-- Single content wrapper. base.css forces the stage's direct
+				     children to position:relative; wrapping here lets the
+				     absolutely-positioned regions inside resolve against the full
+				     1920x1080 stage. -->
+				<div class="lep-content">
+					<!-- LOCKUP — kicker only; the quote itself is the headline. -->
+					<div class="lep-lockup">
+						<div class="lep-kicker" data-bind="eyebrow"></div>
+					</div>
+
+					<!-- QUOTE — the one takeaway, headline tier, accent rule. -->
+					<div class="lep-quote-stage">
+						<div class="lep-quote-block">
+							<blockquote
+								class="lep-quote-body"
+								data-bind="quote"
+							></blockquote>
+						</div>
+					</div>
+
+					<!-- ATTRIBUTION — broadcast lower-third grammar. -->
+					<div class="lep-quote-attribution">
+						<p class="lep-quote-speaker" data-bind="speaker"></p>
+						<p class="lep-quote-speaker-title" data-bind="speakerTitle"></p>
+						<p class="lep-quote-context" data-bind="context"></p>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!--
+			Inline content/manifest mirrors. When the bundle is hosted, the
+			helper fetches content.json / manifest.json over HTTP. When it is
+			rendered from a file:// URL (the M2 capture harness), fetch is
+			blocked, so the loader falls back to these inline copies. KEEP THESE
+			IN SYNC with content.json / manifest.json — they are a render-time
+			convenience only; content.json remains the editable source of truth.
+		-->
+		<script type="application/json" id="lep-inline-content">
+			{
+				"eyebrow": "In Their Own Words",
+				"quote": "We did not build the harbor for the calm days. We built it for the storms we knew were coming.",
+				"speaker": "Sample Speaker",
+				"speakerTitle": "Director of Operations, Sample Port Authority",
+				"context": "Illustrative example · Annual review, undisclosed venue",
+				"source": "Sample transcript · illustrative"
+			}
+		</script>
+		<script type="application/json" id="lep-inline-manifest">
+			{ "createdAt": "2026-06-08T00:00:00Z" }
+		</script>
+
+		<script src="./lib/helpers.js"></script>
+		<script>
+			// Read an inline JSON <script> mirror; null if absent/unparseable.
+			function readInlineJSON(id) {
+				const el = document.getElementById(id);
+				if (!el) return null;
+				try {
+					return JSON.parse(el.textContent);
+				} catch (e) {
+					return null;
+				}
+			}
+			// Prefer HTTP fetch (hosted); fall back to the inline mirror when
+			// fetch is unavailable (file:// capture).
+			async function loadJSONOr(loader, inlineId) {
+				try {
+					return await loader();
+				} catch (e) {
+					const inline = readInlineJSON(inlineId);
+					if (inline) return inline;
+					throw e;
+				}
+			}
+
+			// Default ambient background: a deep, low-contrast radial-into-linear
+			// field anchored top-left. Quiet enough to read as "intentional dark
+			// canvas," not an empty one. Producers can override via
+			// content.backgroundImage (any URL).
+			const DEFAULT_BG =
+				'data:image/svg+xml;utf8,' +
+				encodeURIComponent(
+					"<svg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080'>" +
+						"<defs>" +
+						"<radialGradient id='g' cx='24%' cy='32%' r='95%'>" +
+						"<stop offset='0%' stop-color='%23182740'/>" +
+						"<stop offset='52%' stop-color='%230c121c'/>" +
+						"<stop offset='100%' stop-color='%23070a10'/>" +
+						"</radialGradient>" +
+						"</defs>" +
+						"<rect width='1920' height='1080' fill='url(%23g)'/>" +
+						"</svg>"
+				);
+
+			(async function () {
+				const [manifest, content] = await Promise.all([
+					loadJSONOr(leporello.loadManifest, 'lep-inline-manifest'),
+					loadJSONOr(leporello.loadContent, 'lep-inline-content'),
+				]);
+
+				// Stamp version/updated as invisible attributes on <html>.
+				// Sources stay in the manifest; the speaker/title/context block
+				// IS the citation surface for this template — editorial framing
+				// (who said it, where, when), not academic citation.
+				leporello.applyVersionStamp(manifest);
+				leporello.fitStage('.lep-stage');
+
+				// Ambient background — a quiet dark texture so a lone quote does
+				// not leave a dead field (direction §5.4). Self-contained inline
+				// SVG so the bundle ships no external image. Left-weighted scrim
+				// keeps the quote/attribution side darkest where the text lives.
+				leporello.mountBackgroundMedia({
+					image: content.backgroundImage || DEFAULT_BG,
+					scrim: content.backgroundScrim || 'left',
+				});
+
+				function setText(key, value) {
+					const el = document.querySelector('[data-bind="' + key + '"]');
+					if (!el) return;
+					if (!value) {
+						el.style.display = 'none';
+						return;
+					}
+					el.textContent = value;
+				}
+
+				setText('eyebrow', content.eyebrow);
+				setText('speaker', content.speaker);
+				setText('speakerTitle', content.speakerTitle);
+				setText('context', content.context);
+
+				// Quote: wrap in smart quotes if the author didn't, then pick a
+				// size tier by length so long pulls still fit the comp zone.
+				const quoteEl = document.querySelector('[data-bind="quote"]');
+				if (quoteEl && content.quote) {
+					const q = content.quote.trim();
+					const wrapped =
+						q.startsWith('“') || q.startsWith('"')
+							? q
+							: '“' + q + '”';
+					quoteEl.textContent = wrapped;
+					const len = wrapped.length;
+					if (len > 200) quoteEl.setAttribute('data-long', 'very');
+					else if (len > 120) quoteEl.setAttribute('data-long', 'true');
+				} else if (quoteEl) {
+					quoteEl.style.display = 'none';
+				}
+			})().catch((err) => {
+				console.error('[leporello-bundle] failed to bootstrap:', err);
+				document.body.innerHTML =
+					'<pre style="color:#f87171;padding:24px;font-family:monospace">' +
+					'Bundle failed to load: ' +
+					String(err && err.message ? err.message : err) +
+					'</pre>';
+			});
+		</script>
+	</body>
+</html>

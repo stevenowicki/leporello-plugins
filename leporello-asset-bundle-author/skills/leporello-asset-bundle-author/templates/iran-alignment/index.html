@@ -1,0 +1,1171 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Leporello alignment-map bundle — v1 DLS (M2)</title>
+
+		<!-- Map stack. The live MapLibre choropleth is the on-air render. The
+		     M1 harness shot is served over file:// with no network, so the static
+		     SVG fallback below is what gets captured; the live map hides it once
+		     the choropleth has actually painted. -->
+		<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+		<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+		<script src="https://unpkg.com/pmtiles@4.4.1/dist/pmtiles.js"></script>
+
+		<link rel="stylesheet" href="./lib/tokens.css" />
+		<link rel="stylesheet" href="./lib/base.css" />
+		<style>
+			/* =================================================================
+			   Alignment choropleth, v1 DLS (M2) — REBUILT.
+
+			   ARCHITECTURE (the bug fixes):
+			   - The map renders FULL-BLEED at true viewport size. It is NOT
+			     wrapped in `.lep-stage` / `leporello.fitStage()`. A CSS
+			     `transform: scale()` on a MapLibre ancestor breaks the renderer's
+			     pixel<->lng/lat math: markers stop tracking pan/zoom and
+			     telestration jumps on commit. So the map gets NO transformed
+			     ancestor whatsoever.
+			   - DLS chrome (lockup, legend, snapshot stepper) lives on a SEPARATE,
+			     NON-scaled overlay (`.lep-chrome`). It is authored in DLS px on the
+			     1920x1080 reference and scaled by a single `--u` length unit
+			     (`--u = min(vw/1920, vh/1080)`), NOT by a transform — so chrome
+			     keeps DLS proportions on any wall while the map math stays exact.
+			   - Story map labels (Tehran, Strait of Hormuz, country/sea names) are
+			     geo-anchored `maplibregl.Marker`s, so they track the map natively.
+			   - The whole composition is GATED hidden until the map's `load` fires
+			     AND the camera `fitBounds` settles (`idle`), killing the load flash
+			     (black -> giant mis-projected blobs -> fit).
+			   telestrator: "map" — strokes anchor in lng/lat via the on-air
+			   MapTelestrator hooking window.leporelloMap over postMessage.
+			   ================================================================= */
+
+			html, body { margin: 0; height: 100%; background: var(--lep-surface-0); overflow: hidden; }
+
+			/* The DLS chrome unit: 1 reference-px on the 1920x1080 canvas, scaled
+			   to the viewport (contain) WITHOUT a transform. Set as a fallback in
+			   CSS and kept current by a tiny resize handler in JS. */
+			:root { --u: min(calc(100vw / 1920), calc(100vh / 1080)); }
+
+			/* ===== AMBIENT MAP LAYER (full-bleed, viewport-sized) ===== */
+			/* Both the live map and the static fallback are fixed to the viewport.
+			   No transformed ancestor — this is the load-bearing fix. */
+			#map,
+			#static-map {
+				position: fixed;
+				inset: 0;
+				z-index: 0;
+			}
+			#map { background: var(--lep-surface-0); }
+			#static-map svg { display: block; width: 100%; height: 100%; }
+			/* THE BLOB-FLASH FIX: the static SVG choropleth starts HIDDEN
+			   (display:none) and is revealed (.is-shown) ONLY on a live-map failure
+			   path — so on the normal path the viewer NEVER sees the giant smooth
+			   blue/amber/grey blobs flash before the live choropleth resolves. */
+			#static-map { display: none; }
+			#static-map.is-shown { display: block; }
+			/* The static-fallback LABELS layer (a .lep-chrome overlay) is hidden by
+			   default too; shown (.is-shown) only on the same live-map failure path. */
+			#static-labels-layer { display: none; }
+			#static-labels-layer.is-shown { display: block; }
+
+			/* Left-weighted legibility scrim (direction §5.4) — keeps the lockup +
+			   legend readable over the map while the center/right stays bright. */
+			.align-scrim {
+				position: fixed;
+				inset: 0;
+				z-index: 1;
+				pointer-events: none;
+				background:
+					linear-gradient(
+						90deg,
+						rgba(7, 11, 18, 0.84) 0%,
+						rgba(7, 11, 18, 0.52) 22%,
+						rgba(7, 11, 18, 0.12) 42%,
+						rgba(7, 11, 18, 0) 56%
+					),
+					linear-gradient(
+						0deg,
+						rgba(7, 11, 18, 0.5) 0%,
+						rgba(7, 11, 18, 0.08) 22%,
+						rgba(7, 11, 18, 0) 38%
+					);
+			}
+
+			/* ===== GATE ===== */
+			/* Everything (map + scrim + chrome) is hidden until the map has loaded
+			   and the camera has settled, so the viewer never sees the black->blob
+			   ->fit flash on asset switch. JS flips body[data-ready]. The static
+			   fallback (offline harness) is revealed immediately via the no-network
+			   path below. */
+			body:not([data-ready]) #map,
+			body:not([data-ready]) .align-scrim,
+			body:not([data-ready]) .lep-chrome,
+			body:not([data-ready]) .lep-geo-marker {
+				opacity: 0;
+			}
+			#map, .align-scrim, .lep-chrome {
+				transition: opacity var(--lep-duration-med) var(--lep-ease-out);
+			}
+
+			/* ===== DLS CHROME OVERLAY (non-scaled; sized via --u) ===== */
+			/* A viewport-fixed layer whose children are positioned in reference-px
+			   multiplied by --u. NOT inside .lep-stage, so no transform reaches the
+			   map. Pointer-events pass through to the map except on live controls. */
+			.lep-chrome {
+				position: fixed;
+				inset: 0;
+				z-index: 3;
+				pointer-events: none;
+				/* Center the 1920x1080 chrome field so px coords map 1:1 to the
+				   ambient map's framing on a 16:9 wall (letterboxed otherwise). */
+				font-size: 0;
+			}
+			.lep-chrome-field {
+				position: absolute;
+				left: 50%;
+				top: 50%;
+				width: calc(1920 * var(--u));
+				height: calc(1080 * var(--u));
+				transform: translate(-50%, -50%);
+			}
+
+			/* Lockup (top-left). */
+			.c-lockup {
+				position: absolute;
+				left: calc(90 * var(--u));
+				top: calc(54 * var(--u));
+				max-width: calc(1180 * var(--u));
+			}
+			.c-kicker {
+				font-family: var(--lep-font-sans);
+				font-size: calc(34 * var(--u));
+				font-weight: 700;
+				letter-spacing: 0.1em;
+				text-transform: uppercase;
+				color: var(--lep-data-primary);
+				margin: 0 0 calc(18 * var(--u)) 0;
+				text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+			}
+			.c-headline {
+				font-family: var(--lep-font-sans);
+				font-size: calc(72 * var(--u));   /* headline-map tier */
+				font-weight: 800;
+				line-height: 1.05;
+				letter-spacing: -0.01em;
+				color: var(--lep-ink-100);
+				margin: 0;
+				text-shadow: 0 3px 22px rgba(0, 0, 0, 0.6);
+			}
+
+			/* Legend (bottom-left, first-class). */
+			.c-legend {
+				position: absolute;
+				left: calc(90 * var(--u));
+				bottom: calc(72 * var(--u));
+				display: none;
+				flex-direction: column;
+				gap: calc(16 * var(--u));
+				background: var(--lep-overlay-legend);
+				padding: calc(20 * var(--u)) calc(26 * var(--u)) calc(22 * var(--u)) calc(22 * var(--u));
+				border-radius: calc(14 * var(--u));
+				border: 1px solid rgba(255, 255, 255, 0.08);
+				backdrop-filter: blur(3px);
+			}
+			.c-legend-row {
+				display: flex;
+				align-items: center;
+				gap: calc(18 * var(--u));
+				font-family: var(--lep-font-sans);
+				font-size: calc(34 * var(--u));
+				font-weight: 600;
+				letter-spacing: 0.01em;
+				color: var(--lep-ink-100);
+				white-space: nowrap;
+			}
+			.c-legend-swatch {
+				width: calc(40 * var(--u));
+				height: calc(40 * var(--u));
+				border-radius: calc(8 * var(--u));
+				flex: none;
+				border: 1.5px solid rgba(255, 255, 255, 0.22);
+			}
+
+			/* ===== SNAPSHOT STEPPER — TOP-RIGHT presenter-controls zone =====
+			   Direction §4 + §5.15: presenter-OPERATED controls live top-right,
+			   just left of the nav rail (x ~66%, y ~4%), within reach of someone
+			   standing at the right edge. NEVER center/bottom. Compact prev/next +
+			   a label + a one-line caption card that sits in the controls column
+			   so it does NOT cover the focal map area. */
+			.c-stepper {
+				position: absolute;
+				top: calc(54 * var(--u));
+				right: calc(90 * var(--u));   /* inside the comp zone's right edge / left of nav */
+				display: none;
+				flex-direction: column;
+				align-items: flex-end;
+				gap: calc(14 * var(--u));
+				width: calc(420 * var(--u));
+				pointer-events: none;
+			}
+			.c-stepper-bar {
+				display: flex;
+				align-items: center;
+				gap: calc(16 * var(--u));
+				background: var(--lep-overlay-pill);
+				border: 1px solid rgba(255, 255, 255, 0.12);
+				border-radius: 999px;
+				padding: calc(8 * var(--u)) calc(14 * var(--u));
+				backdrop-filter: blur(6px);
+				box-shadow: var(--lep-shadow-lg);
+				pointer-events: auto;
+			}
+			.c-step-btn {
+				width: calc(56 * var(--u));
+				height: calc(56 * var(--u));
+				border-radius: 50%;
+				border: 2px solid rgba(255, 255, 255, 0.18);
+				background: rgba(255, 255, 255, 0.08);
+				color: var(--lep-ink-100);
+				font-size: calc(34 * var(--u));
+				line-height: 1;
+				cursor: pointer;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-family: var(--lep-font-sans);
+				transition: background var(--lep-duration-fast) var(--lep-ease-out);
+			}
+			.c-step-btn:hover { background: rgba(255, 255, 255, 0.18); }
+			.c-step-btn:disabled { opacity: 0.28; cursor: default; }
+			.c-step-label {
+				font-family: var(--lep-font-sans);
+				font-size: calc(30 * var(--u));   /* legend / storytelling tier */
+				font-weight: 700;
+				letter-spacing: 0.01em;
+				color: var(--lep-ink-100);
+				min-width: calc(200 * var(--u));
+				text-align: center;
+				text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+			}
+			.c-step-dots {
+				display: flex;
+				gap: calc(10 * var(--u));
+				align-items: center;
+				justify-content: flex-end;
+			}
+			.c-step-dot {
+				width: calc(12 * var(--u));
+				height: calc(12 * var(--u));
+				border-radius: 50%;
+				background: rgba(255, 255, 255, 0.24);
+				transition: background var(--lep-duration-fast) var(--lep-ease-out),
+					transform var(--lep-duration-fast) var(--lep-ease-out);
+			}
+			.c-step-dot.is-active {
+				background: var(--lep-data-primary);
+				transform: scale(1.3);
+			}
+			/* Compact caption card — sits in the top-right column under the bar,
+			   so it stays clear of the focal map area (no center-bottom overlay). */
+			.c-step-caption {
+				font-family: var(--lep-font-sans);
+				font-size: calc(24 * var(--u));
+				font-weight: 500;
+				line-height: 1.25;
+				color: var(--lep-ink-200);
+				text-align: right;
+				background: var(--lep-overlay-card);
+				border: 1px solid rgba(255, 255, 255, 0.08);
+				border-radius: calc(14 * var(--u));
+				padding: calc(12 * var(--u)) calc(18 * var(--u));
+				backdrop-filter: blur(4px);
+				max-width: calc(420 * var(--u));
+			}
+			.c-step-caption:empty { display: none; }
+
+			/* ===== GEO-ANCHORED MAP LABELS (maplibregl.Marker children) =====
+			   Two tiers (direction §6). Featured dominates (40px-equiv via --u),
+			   orientation recedes (22px-equiv, 0.7 opacity). These markers ride on
+			   the map so they track pan/zoom natively — the geo-anchoring fix. */
+			.lep-geo-marker { pointer-events: none; }
+			.lep-geo-featured {
+				display: flex;
+				align-items: center;
+				gap: calc(14 * var(--u));
+				white-space: nowrap;
+				font-family: var(--lep-font-sans);
+				font-size: calc(40 * var(--u));
+				font-weight: 700;
+				letter-spacing: -0.005em;
+				color: var(--lep-ink-100);
+				text-shadow: var(--lep-halo-featured);
+				transform: translateX(calc(14 * var(--u)));
+			}
+			.lep-geo-featured.lep-pill {
+				background: var(--lep-overlay-pill);
+				border: 2px solid rgba(255, 255, 255, 0.2);
+				padding: calc(8 * var(--u)) calc(20 * var(--u));
+				border-radius: calc(14 * var(--u));
+				backdrop-filter: blur(2px);
+				box-shadow: var(--lep-shadow-lg);
+			}
+			.lep-geo-marker-dot {
+				width: calc(22 * var(--u));
+				height: calc(22 * var(--u));
+				border-radius: 50%;
+				background: var(--lep-data-accent);
+				box-shadow: 0 0 0 calc(5 * var(--u)) rgba(10, 14, 20, 0.85),
+					0 0 18px rgba(255, 178, 63, 0.6);
+				flex: none;
+			}
+			.lep-geo-marker-dot.primary {
+				background: var(--lep-data-primary);
+				box-shadow: 0 0 0 calc(5 * var(--u)) rgba(10, 14, 20, 0.85),
+					0 0 20px rgba(79, 179, 255, 0.7);
+			}
+			.lep-geo-orientation {
+				white-space: nowrap;
+				font-family: var(--lep-font-sans);
+				font-size: calc(22 * var(--u));
+				font-weight: 400;
+				letter-spacing: 0.02em;
+				color: var(--lep-ink-muted);
+				opacity: 0.7;
+				text-shadow: var(--lep-halo-orientation);
+			}
+			.lep-geo-orientation.is-sea {
+				font-style: italic;
+				letter-spacing: 0.24em;
+				text-transform: uppercase;
+				color: #8aa0b6;
+				opacity: 0.55;
+			}
+
+			/* MapLibre popup typography (live mode only). */
+			.maplibregl-popup-content {
+				font-family: var(--lep-font-sans);
+				font-size: 22px;
+				color: #111827;
+				border-radius: var(--lep-radius-md);
+				padding: 10px 14px;
+			}
+		</style>
+	</head>
+	<body>
+		<!-- ===== AMBIENT MAP LAYER (full-bleed, NO transform ancestor) ===== -->
+
+		<!-- Live MapLibre choropleth (online). -->
+		<div id="map"></div>
+
+		<!-- Static SVG fallback choropleth — what the offline harness captures.
+		     Each country path carries data-iso so the stepper recolors it offline
+		     exactly like the live `match` expression. Stylized regional geometry;
+		     clearly illustrative. The viewBox is 1920x1080 and slice-fit so the
+		     static-map projection matches the chrome field 1:1 for label placement. -->
+		<div id="static-map">
+			<svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+				<defs>
+					<radialGradient id="sea" cx="52%" cy="48%" r="80%">
+						<stop offset="0%" stop-color="#16314f" />
+						<stop offset="60%" stop-color="#11283f" />
+						<stop offset="100%" stop-color="#0c2034" />
+					</radialGradient>
+					<filter id="cland" x="-10%" y="-10%" width="120%" height="120%">
+						<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000" flood-opacity="0.45" />
+					</filter>
+				</defs>
+
+				<rect x="0" y="0" width="1920" height="1080" fill="url(#sea)" />
+				<g stroke="#214766" stroke-width="1" opacity="0.28">
+					<line x1="0" y1="300" x2="1920" y2="300" />
+					<line x1="0" y1="600" x2="1920" y2="600" />
+					<line x1="0" y1="900" x2="1920" y2="900" />
+					<line x1="480" y1="0" x2="480" y2="1080" />
+					<line x1="960" y1="0" x2="960" y2="1080" />
+					<line x1="1440" y1="0" x2="1440" y2="1080" />
+				</g>
+
+				<g filter="url(#cland)" stroke="#0a0e14" stroke-width="2.5" stroke-linejoin="round">
+					<!-- IRAN (north / east) -->
+					<path data-iso="IRN" d="
+						M 560,40 L 1500,40 C 1520,120 1480,180 1400,210
+						C 1320,240 1250,236 1180,270 C 1110,304 1090,360 1018,396
+						C 980,415 944,408 906,392 C 868,376 840,346 800,330
+						C 752,310 700,322 660,300 C 612,274 600,222 560,196
+						C 520,170 470,168 440,134 C 416,108 470,70 560,40 Z" />
+					<!-- IRAQ -->
+					<path data-iso="IRQ" d="
+						M 200,150 L 560,40 C 470,70 416,108 440,134
+						C 470,168 520,170 560,196 C 600,222 612,274 660,300
+						C 700,322 752,310 800,330 L 700,470
+						C 620,500 540,470 470,500 C 420,522 380,470 320,440
+						C 260,410 220,360 200,300 Z" />
+					<!-- SYRIA -->
+					<path data-iso="SYR" d="
+						M 60,210 L 200,150 C 220,360 260,410 320,440
+						L 240,520 C 180,540 120,520 80,470
+						C 50,432 50,300 60,210 Z" />
+					<!-- SAUDI ARABIA -->
+					<path data-iso="SAU" d="
+						M 200,300 C 220,360 260,410 320,440 C 380,470 420,522 470,500
+						C 540,470 620,500 700,470 L 800,330
+						C 840,346 868,376 906,392 L 980,560
+						C 940,640 880,700 800,760 C 720,820 620,880 520,900
+						C 420,920 320,900 260,840 C 200,780 180,680 170,580
+						C 162,500 170,400 200,300 Z" />
+					<!-- KUWAIT -->
+					<path data-iso="KWT" d="
+						M 700,470 C 760,455 800,448 840,452 L 856,520
+						C 820,540 770,536 730,520 C 706,510 700,490 700,470 Z" />
+					<!-- BAHRAIN -->
+					<path data-iso="BHR" d="
+						M 870,604 C 888,600 902,612 902,632 C 902,652 888,664 870,660
+						C 856,656 850,640 854,624 C 856,612 862,606 870,604 Z" />
+					<!-- QATAR -->
+					<path data-iso="QAT" d="
+						M 960,612 C 996,608 1018,628 1020,668 C 1022,706 1004,740 972,748
+						C 948,752 932,732 930,704 C 928,668 936,628 960,612 Z" />
+					<!-- U.A.E. -->
+					<path data-iso="ARE" d="
+						M 980,560 L 1018,396 C 1090,360 1110,304 1180,270
+						C 1170,360 1130,440 1150,540 C 1160,600 1130,660 1070,700
+						C 1030,726 1000,712 988,672 C 980,640 980,600 980,560 Z" />
+					<!-- OMAN -->
+					<path data-iso="OMN" d="
+						M 1150,540 C 1130,440 1170,360 1180,270 C 1250,236 1320,240 1400,210
+						C 1380,320 1320,420 1260,520 C 1340,560 1420,620 1460,720
+						C 1490,800 1460,900 1380,960 C 1300,1010 1200,1000 1140,940
+						C 1090,888 1080,800 1090,720 C 1098,650 1110,590 1150,540 Z" />
+					<path data-iso="OMN" d="
+						M 1060,470 C 1090,452 1124,460 1140,492 C 1156,524 1148,560 1118,572
+						C 1094,582 1066,570 1054,544 C 1044,520 1046,488 1060,470 Z" />
+					<!-- TURKEY -->
+					<path data-iso="TUR" d="
+						M 60,60 L 560,40 L 440,134 C 416,108 360,80 280,72
+						C 200,64 120,64 60,80 C 56,72 56,66 60,60 Z" />
+					<!-- ISRAEL -->
+					<path data-iso="ISR" d="
+						M 60,470 L 80,470 C 120,520 180,540 240,520 L 220,600
+						C 180,640 130,640 100,600 C 76,568 64,520 60,470 Z" />
+				</g>
+
+				<!-- strait corridor accent (the story geography) -->
+				<path d="M 906,392 C 980,440 1030,470 1080,490 C 1130,510 1180,520 1240,560"
+					fill="none" stroke="rgba(150,215,255,0.85)" stroke-width="4"
+					stroke-dasharray="3 11" stroke-linecap="round" />
+				<circle cx="1100" cy="500" r="8" fill="none"
+					stroke="rgba(79,179,255,0.95)" stroke-width="3" />
+			</svg>
+		</div>
+
+		<div class="align-scrim"></div>
+
+		<!-- ===== DLS CHROME OVERLAY (non-scaled; sized via --u) ===== -->
+		<div class="lep-chrome">
+			<div class="lep-chrome-field">
+				<!-- Lockup (top-left) -->
+				<div class="c-lockup">
+					<p class="c-kicker" data-bind="eyebrow"></p>
+					<h1 class="c-headline" data-bind="headline"></h1>
+				</div>
+
+				<!-- Legend (bottom-left, first-class) -->
+				<div class="c-legend" id="legend"></div>
+
+				<!-- Snapshot stepper (TOP-RIGHT presenter-controls zone, §5.15) -->
+				<div class="c-stepper" id="stepper">
+					<div class="c-stepper-bar">
+						<button class="c-step-btn" id="step-prev" aria-label="Previous snapshot">‹</button>
+						<span class="c-step-label" id="step-label"></span>
+						<button class="c-step-btn" id="step-next" aria-label="Next snapshot">›</button>
+					</div>
+					<div class="c-step-dots" id="step-dots"></div>
+					<div class="c-step-caption" id="step-caption"></div>
+				</div>
+			</div>
+		</div>
+
+		<!-- For the offline harness: featured/orientation labels are placed against
+		     the static-map's fixed 1920x1080 projection. Live mode replaces these
+		     with geo-anchored maplibregl.Markers. -->
+		<div class="lep-chrome" id="static-labels-layer">
+			<div class="lep-chrome-field" id="static-labels"></div>
+		</div>
+
+		<!-- Inline copy of content.json — KEPT IN SYNC with content.json. Served
+		     over http (the on-air iframe) the fetch wins; opened over file:// (the
+		     harness), fetch is blocked so we fall back to this. Edit BOTH. -->
+		<script type="application/json" id="content-fallback">
+{
+  "eyebrow": "Regional Alignment",
+  "headline": "Two Blocs, One Strait",
+  "basemap": { "styleUrl": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
+  "camera": { "center": [50, 27], "zoom": 3.7, "pitch": 0, "bearing": 0 },
+  "bounds": [[34, 12], [64, 40]],
+  "groups": [
+    { "id": "bloc-a", "label": "Bloc A — sample", "color": "#4fb3ff" },
+    { "id": "bloc-b", "label": "Bloc B — sample", "color": "#ffb23f" },
+    { "id": "nonaligned", "label": "Non-aligned", "color": "#9ca3af" }
+  ],
+  "snapshots": [
+    {
+      "id": "s1",
+      "label": "Baseline",
+      "caption": "Sample baseline alignment — illustrative only, not a real assessment.",
+      "members": {
+        "bloc-a": ["IRN", "SYR", "IRQ"],
+        "bloc-b": ["SAU", "ARE", "ISR", "BHR"],
+        "nonaligned": ["TUR", "QAT", "OMN", "KWT"]
+      }
+    },
+    {
+      "id": "s2",
+      "label": "Shift",
+      "caption": "A sample realignment — one state moves to non-aligned, another joins Bloc B.",
+      "members": {
+        "bloc-a": ["IRN", "SYR"],
+        "bloc-b": ["SAU", "ARE", "ISR", "BHR", "KWT"],
+        "nonaligned": ["TUR", "QAT", "OMN", "IRQ"]
+      }
+    },
+    {
+      "id": "s3",
+      "label": "Consolidation",
+      "caption": "A sample consolidation — blocs harden and the non-aligned middle narrows.",
+      "members": {
+        "bloc-a": ["IRN", "SYR", "IRQ"],
+        "bloc-b": ["SAU", "ARE", "ISR", "BHR", "KWT", "QAT"],
+        "nonaligned": ["TUR", "OMN"]
+      }
+    }
+  ],
+  "featuredLabels": [
+    { "text": "Strait of Hormuz", "lngLat": [56.3, 26.6], "x": 1206, "y": 560, "pill": true, "kind": "primary" },
+    { "text": "Tehran", "lngLat": [51.39, 35.69], "x": 812, "y": 286, "kind": "dot" }
+  ],
+  "orientationLabels": [
+    { "text": "IRAN", "lngLat": [53.0, 32.5], "x": 760, "y": 360 },
+    { "text": "SAUDI ARABIA", "lngLat": [45.0, 24.0], "x": 470, "y": 660 },
+    { "text": "U.A.E. · OMAN", "lngLat": [56.0, 22.5], "x": 1150, "y": 760 },
+    { "text": "Persian Gulf", "lngLat": [51.5, 27.5], "x": 700, "y": 560, "sea": true },
+    { "text": "Gulf of Oman", "lngLat": [59.0, 24.5], "x": 1340, "y": 610, "sea": true }
+  ],
+  "unassignedColor": "rgba(120,130,150,0.16)",
+  "sourceRefs": []
+}
+		</script>
+
+		<script src="./lib/helpers.js"></script>
+		<script>
+			// Keep the chrome unit (--u) current. Chrome is scaled by this length,
+			// NOT by a transform — so no transformed ancestor ever reaches the map.
+			function setU() {
+				const u = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+				document.documentElement.style.setProperty('--u', u + 'px');
+			}
+			setU();
+			window.addEventListener('resize', setU);
+
+			function loadContentResilient() {
+				return leporello.loadContent().catch(function () {
+					const el = document.getElementById('content-fallback');
+					return JSON.parse(el.textContent);
+				});
+			}
+
+			(async function () {
+				// NOTE: deliberately NO leporello.fitStage() — the map must render
+				// at native viewport size with no transformed ancestor.
+
+				const [manifest, content] = await Promise.all([
+					leporello.loadManifest().catch(function () { return {}; }),
+					loadContentResilient(),
+				]);
+				leporello.applyVersionStamp(manifest);
+
+				// Bind lockup text.
+				['eyebrow', 'headline'].forEach(function (key) {
+					const el = document.querySelector('[data-bind="' + key + '"]');
+					if (el && content[key]) el.textContent = content[key];
+				});
+
+				// --- Alignment groups + snapshots --------------------------------
+				const groups = Array.isArray(content.groups) ? content.groups : [];
+				const snapshots =
+					Array.isArray(content.snapshots) && content.snapshots.length
+						? content.snapshots
+						: [{ members: {} }];
+				const unassigned = content.unassignedColor || 'rgba(0,0,0,0)';
+				let activeIdx = 0;
+				let mapRef = null;
+
+				function groupForIso(snap, iso) {
+					for (const g of groups) {
+						if (((snap.members && snap.members[g.id]) || []).includes(iso)) return g;
+					}
+					return null;
+				}
+				function fillColorExpr(snap) {
+					const pairs = [];
+					for (const g of groups) {
+						for (const iso of (snap.members && snap.members[g.id]) || [])
+							pairs.push(iso, g.color);
+					}
+					return pairs.length
+						? ['match', ['get', 'shapeGroup'], ...pairs, unassigned]
+						: unassigned;
+				}
+
+				// --- Static SVG fallback colorer (offline / harness) -------------
+				const staticPaths = Array.prototype.slice.call(
+					document.querySelectorAll('#static-map [data-iso]')
+				);
+				function paintStatic(snap) {
+					staticPaths.forEach(function (p) {
+						const g = groupForIso(snap, p.getAttribute('data-iso'));
+						p.setAttribute('fill', g ? g.color : unassigned);
+						p.setAttribute('fill-opacity', g ? '0.82' : '0.5');
+					});
+				}
+
+				// --- Static-mode labels (offline harness only) -------------------
+				// Placed against the static-map's fixed 1920x1080 projection using
+				// each label's x/y. Live mode uses geo-anchored markers instead.
+				const staticLabelsRoot = document.getElementById('static-labels');
+				function buildStaticLabels() {
+					staticLabelsRoot.innerHTML = '';
+					(content.orientationLabels || []).forEach(function (l) {
+						if (l.x == null || l.y == null) return;
+						const el = document.createElement('div');
+						el.className = 'lep-geo-orientation' + (l.sea ? ' is-sea' : '');
+						el.style.position = 'absolute';
+						el.style.left = 'calc(' + l.x + ' * var(--u))';
+						el.style.top = 'calc(' + l.y + ' * var(--u))';
+						el.style.transform = 'translate(-50%, -50%)';
+						el.textContent = l.text;
+						staticLabelsRoot.appendChild(el);
+					});
+					(content.featuredLabels || []).forEach(function (l) {
+						if (l.x == null || l.y == null) return;
+						const el = document.createElement('div');
+						el.className = 'lep-geo-featured' + (l.pill ? ' lep-pill' : '');
+						el.style.position = 'absolute';
+						el.style.left = 'calc(' + l.x + ' * var(--u))';
+						el.style.top = 'calc(' + l.y + ' * var(--u))';
+						el.style.transform = 'translate(-50%, -50%)';
+						if (l.kind) {
+							const m = document.createElement('span');
+							m.className = 'lep-geo-marker-dot' + (l.kind === 'primary' ? ' primary' : '');
+							el.appendChild(m);
+						}
+						const t = document.createElement('span');
+						t.textContent = l.text;
+						el.appendChild(t);
+						staticLabelsRoot.appendChild(el);
+					});
+				}
+
+				// --- Legend (first-class) ----------------------------------------
+				if (groups.length) {
+					const legend = document.getElementById('legend');
+					legend.style.display = 'flex';
+					groups.forEach(function (g) {
+						const row = document.createElement('div');
+						row.className = 'c-legend-row';
+						const sw = document.createElement('span');
+						sw.className = 'c-legend-swatch';
+						sw.style.background = g.color;
+						const lbl = document.createElement('span');
+						lbl.textContent = g.label || g.id;
+						row.appendChild(sw);
+						row.appendChild(lbl);
+						legend.appendChild(row);
+					});
+				}
+
+				// --- Stepper (top-right presenter-controls zone) -----------------
+				const captionEl = document.getElementById('step-caption');
+				const stepLabelEl = document.getElementById('step-label');
+				const dotsRoot = document.getElementById('step-dots');
+				const prevBtn = document.getElementById('step-prev');
+				const nextBtn = document.getElementById('step-next');
+
+				if (snapshots.length > 1) {
+					snapshots.forEach(function () {
+						const d = document.createElement('span');
+						d.className = 'c-step-dot';
+						dotsRoot.appendChild(d);
+					});
+				}
+
+				function applySnapshot() {
+					const snap = snapshots[activeIdx] || { members: {} };
+					paintStatic(snap);
+					if (mapRef && mapRef.getLayer && mapRef.getLayer('geo-fill')) {
+						mapRef.setPaintProperty('geo-fill', 'fill-color', fillColorExpr(snap));
+					}
+					captionEl.textContent = snap.caption || '';
+					stepLabelEl.textContent = snap.label || '';
+					prevBtn.disabled = activeIdx === 0;
+					nextBtn.disabled = activeIdx === snapshots.length - 1;
+					Array.prototype.forEach.call(dotsRoot.children, function (d, i) {
+						d.classList.toggle('is-active', i === activeIdx);
+					});
+				}
+
+				if (snapshots.length > 1) {
+					document.getElementById('stepper').style.display = 'flex';
+					prevBtn.addEventListener('click', function () {
+						if (activeIdx > 0) { activeIdx--; applySnapshot(); }
+					});
+					nextBtn.addEventListener('click', function () {
+						if (activeIdx < snapshots.length - 1) { activeIdx++; applySnapshot(); }
+					});
+				} else if (snapshots[0] && snapshots[0].caption) {
+					document.getElementById('stepper').style.display = 'flex';
+					document.querySelector('.c-stepper-bar').style.display = 'none';
+				}
+
+				// Paint static fallback + labels immediately (offline harness shot).
+				buildStaticLabels();
+				applySnapshot();
+
+				// In the offline (no-network) path the live map never loads, so the
+				// gate would keep the page hidden. If MapLibre isn't present at all,
+				// there's no live map to wait for — show the static SVG fallback (it's
+				// display:none by default) and reveal immediately.
+				if (typeof maplibregl === 'undefined') {
+					const sm = document.getElementById('static-map');
+					if (sm) sm.classList.add('is-shown');
+					const sl = document.getElementById('static-labels-layer');
+					if (sl) sl.classList.add('is-shown');
+					document.body.setAttribute('data-ready', '');
+					return;
+				}
+
+				// =================================================================
+				//  LIVE MAP (online). Full-bleed, NO transformed ancestor.
+				// =================================================================
+				if (window.pmtiles && !window.__lepPmtilesReg) {
+					maplibregl.addProtocol('pmtiles', new pmtiles.Protocol().tile);
+					window.__lepPmtilesReg = true;
+				}
+
+				const cam = content.camera || {};
+				const fitBounds =
+					Array.isArray(content.bounds) && content.bounds.length === 2
+						? content.bounds
+						: null;
+				let map;
+				try {
+					// CRITICAL (the blob-flash fix): initialize the map AT the story
+					// bounds via the constructor's `bounds` + `fitBoundsOptions`, so
+					// the choropleth is NEVER painted at the default world/z-low
+					// camera for a few frames first (which flashed giant mis-projected
+					// blobs on asset switch before the fitBounds settled). When bounds
+					// are present they win; center/zoom remain the fallback for
+					// bounds-less content. animate:false so there's no fly-in either.
+					const mapOpts = {
+						container: 'map',
+						style:
+							(content.basemap && content.basemap.styleUrl) ||
+							'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+						center: cam.center || [50, 27],
+						zoom: cam.zoom != null ? cam.zoom : 3.7,
+						pitch: cam.pitch || 0,
+						bearing: cam.bearing || 0,
+						attributionControl: { compact: true },
+					};
+					if (fitBounds) {
+						mapOpts.bounds = fitBounds;
+						mapOpts.fitBoundsOptions = { padding: 80, animate: false };
+					}
+					map = new maplibregl.Map(mapOpts);
+				} catch (e) {
+					// Map construction failed — show the static SVG fallback (hidden
+					// by default) and reveal it.
+					const sm = document.getElementById('static-map');
+					if (sm) sm.classList.add('is-shown');
+					const sl = document.getElementById('static-labels-layer');
+					if (sl) sl.classList.add('is-shown');
+					document.body.setAttribute('data-ready', '');
+					return;
+				}
+				mapRef = map;
+				window.leporelloMap = map;
+				window.leporelloBundle = { map: map };
+				if (window.ResizeObserver) {
+					new ResizeObserver(function () { map.resize(); }).observe(
+						document.getElementById('map')
+					);
+				}
+
+				// --- Geo-anchored map labels (Tehran / Hormuz + orientation) -----
+				const geoMarkers = [];
+				function addGeoLabels() {
+					(content.orientationLabels || []).forEach(function (l) {
+						if (!Array.isArray(l.lngLat)) return;
+						const el = document.createElement('div');
+						el.className = 'lep-geo-marker';
+						const inner = document.createElement('div');
+						inner.className = 'lep-geo-orientation' + (l.sea ? ' is-sea' : '');
+						inner.textContent = l.text;
+						el.appendChild(inner);
+						const mk = new maplibregl.Marker({ element: el, anchor: 'center' })
+							.setLngLat(l.lngLat)
+							.addTo(map);
+						geoMarkers.push(mk);
+					});
+					(content.featuredLabels || []).forEach(function (l) {
+						if (!Array.isArray(l.lngLat)) return;
+						const el = document.createElement('div');
+						el.className = 'lep-geo-marker';
+						const inner = document.createElement('div');
+						inner.className = 'lep-geo-featured' + (l.pill ? ' lep-pill' : '');
+						if (l.kind) {
+							const dot = document.createElement('span');
+							dot.className = 'lep-geo-marker-dot' + (l.kind === 'primary' ? ' primary' : '');
+							inner.appendChild(dot);
+						}
+						const t = document.createElement('span');
+						t.textContent = l.text;
+						inner.appendChild(t);
+						el.appendChild(inner);
+						// Anchor 'left' so the pill grows to the right of the point.
+						const mk = new maplibregl.Marker({ element: el, anchor: 'left' })
+							.setLngLat(l.lngLat)
+							.addTo(map);
+						geoMarkers.push(mk);
+					});
+				}
+
+				// --- Map telestration receiver (postMessage) ---------------------
+				// The on-air page is a different origin and can't touch this map; it
+				// forwards pointer events here (viewport px). We draw the in-progress
+				// stroke on a 2D canvas, then on pointer-up unproject to lng/lat and
+				// commit to a GL line layer (re-projects natively through pan/zoom).
+				// The canvas + the map are both at true viewport size with no scaled
+				// ancestor, so unproject([x,y]) maps the parent's viewport-px exactly
+				// — this is what fixes the telestration JUMP. Channel: "lepo-tele".
+				const TELE_SOURCE = 'lep-telestrations';
+				const TELE_LAYER = 'lep-telestrations-line';
+				const TELE_MIN_DIST_SQ = 16;
+				let teleFeatures = [];
+				const teleActive = new Map();
+				const teleCanvas = document.createElement('canvas');
+				teleCanvas.style.cssText =
+					'position:fixed;inset:0;z-index:4;pointer-events:none';
+				document.body.appendChild(teleCanvas);
+				let teleCtx = null;
+				function teleResizeCanvas() {
+					const dpr = window.devicePixelRatio || 1;
+					const w = window.innerWidth, h = window.innerHeight;
+					teleCanvas.width = Math.max(1, Math.round(w * dpr));
+					teleCanvas.height = Math.max(1, Math.round(h * dpr));
+					teleCanvas.style.width = w + 'px';
+					teleCanvas.style.height = h + 'px';
+					teleCtx = teleCanvas.getContext('2d');
+					if (teleCtx) teleCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+					teleRedrawActive();
+				}
+				function teleRedrawActive() {
+					if (!teleCtx) return;
+					teleCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+					teleCtx.lineCap = 'round';
+					teleCtx.lineJoin = 'round';
+					for (const s of teleActive.values()) {
+						if (s.points.length < 1) continue;
+						teleCtx.beginPath();
+						teleCtx.moveTo(s.points[0][0], s.points[0][1]);
+						for (let i = 1; i < s.points.length; i++)
+							teleCtx.lineTo(s.points[i][0], s.points[i][1]);
+						teleCtx.strokeStyle = s.color;
+						teleCtx.lineWidth = s.width;
+						teleCtx.stroke();
+					}
+				}
+				if (window.ResizeObserver)
+					new ResizeObserver(teleResizeCanvas).observe(document.body);
+				teleResizeCanvas();
+				function teleData() {
+					return { type: 'FeatureCollection', features: teleFeatures };
+				}
+				function teleRender() {
+					const src = map.getSource(TELE_SOURCE);
+					if (src) src.setData(teleData());
+				}
+				function teleEnsureLayer() {
+					if (map.getSource(TELE_SOURCE)) return;
+					map.addSource(TELE_SOURCE, { type: 'geojson', data: teleData() });
+					map.addLayer({
+						id: TELE_LAYER,
+						type: 'line',
+						source: TELE_SOURCE,
+						layout: { 'line-cap': 'round', 'line-join': 'round' },
+						paint: {
+							'line-color': ['get', 'color'],
+							'line-width': ['get', 'width'],
+							'line-opacity': ['coalesce', ['get', 'opacity'], 1],
+						},
+					});
+				}
+				function telePost(msg) {
+					try {
+						window.parent.postMessage(
+							Object.assign({ ch: 'lepo-tele' }, msg),
+							'*'
+						);
+					} catch (e) {}
+				}
+				function teleCommit(s) {
+					if (s.points.length < 2) return;
+					const coords = s.points.map(function (pt) {
+						const ll = map.unproject([pt[0], pt[1]]);
+						return [
+							parseFloat(ll.lng.toFixed(6)),
+							parseFloat(ll.lat.toFixed(6)),
+						];
+					});
+					const feature = {
+						type: 'Feature',
+						geometry: { type: 'LineString', coordinates: coords },
+						properties: {
+							id: 't' + Date.now() + '-' + Math.round(Math.random() * 1e6),
+							color: s.color,
+							width: s.width,
+							opacity: 1,
+						},
+					};
+					teleFeatures.push(feature);
+					teleRender();
+					telePost({ type: 'committed', feature: feature });
+				}
+				function teleOnPointer(m) {
+					const id = m.pointerId != null ? m.pointerId : 0;
+					if (m.phase === 'down') {
+						teleActive.set(id, {
+							points: [[m.x, m.y]],
+							color: m.color || '#ff3b30',
+							width: m.width || 8,
+						});
+						teleRedrawActive();
+					} else if (m.phase === 'move') {
+						const s = teleActive.get(id);
+						if (!s) return;
+						const last = s.points[s.points.length - 1];
+						const dx = m.x - last[0], dy = m.y - last[1];
+						if (dx * dx + dy * dy < TELE_MIN_DIST_SQ) return;
+						s.points.push([m.x, m.y]);
+						teleRedrawActive();
+					} else if (m.phase === 'up') {
+						const s = teleActive.get(id);
+						if (!s) return;
+						teleCommit(s);
+						map.once('render', function () {
+							teleActive.delete(id);
+							teleRedrawActive();
+						});
+					}
+				}
+				window.addEventListener('message', function (e) {
+					const d = e.data;
+					if (!d || d.ch !== 'lepo-tele') return;
+					if (d.type === 'setFeatures') {
+						teleFeatures = Array.isArray(d.features) ? d.features : [];
+						teleRender();
+					} else if (d.type === 'pointer') {
+						teleOnPointer(d);
+					} else if (d.type === 'cancel') {
+						teleActive.clear();
+						teleRedrawActive();
+					}
+				});
+
+				// --- Geo layer (admin0 PMTiles) ----------------------------------
+				const interactivesBase = location.href
+					.split('/orgs/')[0]
+					.replace(/\/+$/, '');
+
+				async function addGeoLayer() {
+					let url = interactivesBase + '/geo/admin0.pmtiles';
+					let sourceLayer = 'admin0';
+					let promoteId = 'shapeGroup';
+					try {
+						const cat = await (
+							await fetch(interactivesBase + '/geo/catalog.json', {
+								cache: 'no-store',
+							})
+						).json();
+						const a = (cat.layers || []).find(function (l) {
+							return l.id === 'admin0';
+						});
+						if (a) {
+							url = interactivesBase + '/geo/' + a.url;
+							sourceLayer = a.sourceLayer;
+							promoteId = a.promoteId;
+						}
+					} catch (e) {}
+
+					if (!map.getSource('geo-admin0')) {
+						map.addSource('geo-admin0', {
+							type: 'vector',
+							url: 'pmtiles://' + url,
+							promoteId: promoteId,
+						});
+					}
+					if (!map.getLayer('geo-fill')) {
+						map.addLayer({
+							id: 'geo-fill',
+							type: 'fill',
+							source: 'geo-admin0',
+							'source-layer': sourceLayer,
+							paint: {
+								'fill-color': fillColorExpr(snapshots[activeIdx]),
+								'fill-opacity': 0.82,
+							},
+						});
+					}
+					if (!map.getLayer('geo-outline')) {
+						map.addLayer({
+							id: 'geo-outline',
+							type: 'line',
+							source: 'geo-admin0',
+							'source-layer': sourceLayer,
+							paint: {
+								'line-color': 'rgba(255,255,255,0.3)',
+								'line-width': 0.6,
+							},
+						});
+					}
+
+					map.on('click', 'geo-fill', function (e) {
+						const f = e.features && e.features[0];
+						if (!f) return;
+						const iso = f.properties.shapeGroup;
+						const name = f.properties.shapeName || iso;
+						const g = groupForIso(snapshots[activeIdx] || { members: {} }, iso);
+						let html = '<strong>' + name + '</strong>';
+						if (g)
+							html +=
+								'<br><span style="color:' +
+								g.color +
+								'">●</span> ' +
+								(g.label || g.id);
+						new maplibregl.Popup({ closeButton: true, maxWidth: '280px' })
+							.setLngLat(e.lngLat)
+							.setHTML(html)
+							.addTo(map);
+					});
+					map.on('mouseenter', 'geo-fill', function () {
+						map.getCanvas().style.cursor = 'pointer';
+					});
+					map.on('mouseleave', 'geo-fill', function () {
+						map.getCanvas().style.cursor = '';
+					});
+				}
+
+				// --- Camera fit + GATE -------------------------------------------
+				// Hide everything until the map has loaded AND the camera has
+				// settled on the framing, so the viewer never sees the load flash
+				// (black -> giant mis-projected blobs -> fit). We reveal on the
+				// first 'idle' AFTER the fitBounds, and add a hard fallback timer.
+				//
+				// THE BLOB-FLASH FIX: the static SVG choropleth starts HIDDEN
+				// (display:none, set in CSS) and is shown ONLY if the live map FAILS.
+				// On the NORMAL path it NEVER becomes visible — the live choropleth
+				// reveals once the geo layer has actually rendered features, so the
+				// viewer never sees the giant blue/amber/grey blobs flash. We show
+				// the static fallback only when the live geo layer has NO features
+				// (geo tiles unreachable) — and then hide the empty live basemap.
+				let revealed = false;
+				let staticShown = false;
+				function liveChoroplethHasFeatures() {
+					try {
+						return (
+							map.getLayer('geo-fill') &&
+							map.queryRenderedFeatures({ layers: ['geo-fill'] }).length > 0
+						);
+					} catch (e) {
+						return false;
+					}
+				}
+				// Failure path ONLY: reveal the static SVG choropleth + its labels and
+				// hide the empty live basemap + its markers, so the frame is never a
+				// colorless live map when the geo tiles never arrive.
+				function showStaticFallback() {
+					if (staticShown) return;
+					if (liveChoroplethHasFeatures()) return; // live map is fine — no blobs
+					staticShown = true;
+					const sm = document.getElementById('static-map');
+					if (sm) sm.classList.add('is-shown');
+					const sl = document.getElementById('static-labels-layer');
+					if (sl) sl.classList.add('is-shown');
+					const m = document.getElementById('map');
+					if (m) m.style.display = 'none';
+					geoMarkers.forEach(function (mk) {
+						try { mk.remove(); } catch (e) {}
+					});
+					geoMarkers.length = 0;
+					document.body.setAttribute('data-ready', '');
+				}
+				function reveal() {
+					if (revealed) return;
+					revealed = true;
+					document.body.setAttribute('data-ready', '');
+					// Normal path: live choropleth painted → do NOTHING with the static
+					// fallback (it stays display:none, so no blob flash). Only if the
+					// live geo layer has no features do we fall back to the static SVG.
+					if (!liveChoroplethHasFeatures()) showStaticFallback();
+				}
+
+				let geoReady = false;
+				async function onLoad() {
+					if (geoReady) return;
+					geoReady = true;
+					try {
+						await addGeoLayer();
+					} catch (e) {
+						console.warn('[leporello-bundle] live geo layer failed', e);
+					}
+					addGeoLabels();
+					applySnapshot();
+					teleEnsureLayer();
+					teleRender();
+					telePost({ type: 'ready' });
+
+					// Re-assert the story-bounds framing (idempotent — the map was
+					// ALREADY constructed at these bounds, so this is just a safety
+					// net in case a basemap style reset the camera on load). duration:0
+					// so it's instant; the choropleth never paints at a default camera.
+					const b = content.bounds;
+					if (Array.isArray(b) && b.length === 2) {
+						try {
+							map.fitBounds(b, { padding: 80, duration: 0 });
+						} catch (e) {}
+					}
+					// Reveal once the geo source has loaded its features (so the
+					// hand-off check sees them), or on the first idle, whichever
+					// gives a painted choropleth.
+					map.on('sourcedata', function (e) {
+						if (e.sourceId === 'geo-admin0' && e.isSourceLoaded && liveChoroplethHasFeatures()) {
+							reveal();
+						}
+					});
+					map.once('idle', reveal);
+					// Hard fallback so a slow/unreachable tile host can't keep the
+					// frame hidden forever — reveal regardless after a beat.
+					setTimeout(reveal, 4000);
+				}
+
+				// 'load' fires after style + first tiles; gives us a painted frame.
+				map.on('load', onLoad);
+				if (map.loaded && map.loaded()) onLoad();
+			})().catch(function (err) {
+				console.error('[leporello-bundle] failed to bootstrap:', err);
+				// Don't strand the frame hidden on a bootstrap error.
+				document.body.setAttribute('data-ready', '');
+			});
+		</script>
+	</body>
+</html>

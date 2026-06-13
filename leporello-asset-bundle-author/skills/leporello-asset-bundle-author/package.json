@@ -1,0 +1,9 @@
+{
+  "name": "leporello-asset-bundle-author",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local tooling dependencies for the Leporello asset-bundle authoring skill. The only runtime dep is Playwright, used by scripts/dls_check.mjs to render a bundle and check DLS conformance (font, presenter-safe column, attribution, headline scale). Installed by scripts/check_deps.sh.",
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

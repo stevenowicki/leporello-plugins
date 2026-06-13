@@ -1,0 +1,48 @@
+{
+  "eyebrow": "HOW IT WORKS",
+  "headline": "From tip to broadcast",
+  "subhead": "The five stages a story moves through before it reaches air.",
+  "source": "Illustrative sample · not a real workflow",
+  "steps": [
+    {
+      "number": 1,
+      "title": "A tip comes in",
+      "railLabel": "The tip",
+      "description": "A source, a document, or a data anomaly lands with the desk.",
+      "accent": false,
+      "sourceRefs": []
+    },
+    {
+      "number": 2,
+      "title": "Reporters verify it",
+      "railLabel": "Verify",
+      "description": "Two independent confirmations are required before anything moves forward.",
+      "accent": false,
+      "sourceRefs": []
+    },
+    {
+      "number": 3,
+      "title": "The desk builds the package",
+      "railLabel": "Build",
+      "description": "Script, footage, and graphics come together into something a viewer reads in three seconds.",
+      "accent": true,
+      "sourceRefs": []
+    },
+    {
+      "number": 4,
+      "title": "An editor signs off",
+      "railLabel": "Sign-off",
+      "description": "A second set of eyes checks the claims and the framing before it locks.",
+      "accent": false,
+      "sourceRefs": []
+    },
+    {
+      "number": 5,
+      "title": "It goes to air",
+      "railLabel": "On air",
+      "description": "The presenter walks the audience through it live, with the graphic as a guide.",
+      "accent": false,
+      "sourceRefs": []
+    }
+  ]
+}
