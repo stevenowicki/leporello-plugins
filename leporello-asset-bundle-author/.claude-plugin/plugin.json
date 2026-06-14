@@ -1,7 +1,7 @@
 {
   "name": "leporello-asset-bundle-author",
   "description": "Author broadcast-ready Leporello interactives (.lepo) in plain English and deploy them straight to your organization. Bundles the asset-bundle authoring skill, the Leporello design system, the mcp.leporello.tv connector, and a one-shot /leporello-setup that installs prerequisites for you.",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "author": {
     "name": "Leporello",
     "url": "https://leporello.tv"

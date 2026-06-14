@@ -61,16 +61,40 @@ The skill should then trigger on prompts mentioning Leporello, asset bundles, `.
 
 To uninstall: `rm ~/.claude/skills/leporello-asset-bundle-author`.
 
-## Eventually: marketplace distribution
+## Distribution: the plugin marketplace (shipped)
 
-The dev install above is a stopgap. The eventual distribution path is the Leporello plugin marketplace:
+Producers don't get this folder by hand. It's published as a Claude Code **plugin**
+to the public marketplace repo
+[`stevenowicki/leporello-plugins`](https://github.com/stevenowicki/leporello-plugins),
+which they install with two one-time commands:
 
+```bash
+claude plugin marketplace add stevenowicki/leporello-plugins
+claude plugin install leporello-asset-bundle-author@leporello
 ```
-/plugin marketplace add leporello.tv/marketplace
-/plugin install leporello-asset-bundle-author
-```
 
-That ships in **Phase 4** (see [`docs/prelim/multi-tenancy-and-producer-authoring.md`](../../docs/prelim/multi-tenancy-and-producer-authoring.md)). Until then, symlink-from-repo is the dev workflow.
+⚠️ Install uses the **`claude plugin …` CLI** (or the `/plugin` slash command in a
+*terminal* `claude` session) — the in-app `/plugin` command is **not** available in
+the Claude Desktop app. Producers run these in Terminal or just ask Claude in Desktop
+to run them. But **the plugin itself loads and runs fully inside Claude Desktop** once
+installed (skill + `/leporello-setup` command + `leporello` MCP, all verified).
+
+…then run `/leporello-setup` once (installs Node/Python prereqs with approval +
+wires the token). The full producer guide is
+[`docs/user/producers/custom-interactives.md`](../../docs/user/producers/custom-interactives.md).
+
+**How publishing works** (you don't run it by hand): the plugin wrapper lives in
+[`plugins/leporello-asset-bundle-author/`](../../plugins/) (manifest, `.mcp.json`,
+the `/leporello-setup` command). The `Publish plugin marketplace` GitHub Action
+([`.github/workflows/deploy-skill.yml`](../../.github/workflows/deploy-skill.yml))
+fires on any push to `main` touching this skill, `dls/tokens.css`, or `plugins/`. It
+runs [`scripts/build-plugin.sh`](../../scripts/build-plugin.sh) (which **re-vendors
+`dls/tokens.css` into every `lib/tokens.css`** so the published skill always carries
+the canonical DLS tokens — note the committed copies here may lag), stamps a fresh
+`version`, and pushes to the marketplace repo. Producers' Claude Code auto-updates
+from there. To preview the published tree locally: `scripts/build-plugin.sh dist`.
+
+The symlink-from-repo workflow above is still the way to **develop** the skill.
 
 ## Day-to-day commands
 

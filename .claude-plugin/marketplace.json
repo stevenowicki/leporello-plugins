@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Leporello plugins for broadcast producers \u2014 author and deploy on-air interactives from Claude.",
-    "version": "1.0.0"
+    "version": "1.0.2"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
       "description": "Build broadcast-ready Leporello interactives in plain English and deploy them to your organization. Includes the Leporello design system, the mcp.leporello.tv connector, and a /leporello-setup that installs Node/Python prerequisites for you.",
       "category": "broadcast",
       "strict": false,
-      "version": "1.0.0"
+      "version": "1.0.2"
     }
   ]
 }
